@@ -608,6 +608,155 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('home quick capture remains usable with the keyboard open', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(360, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pumpKedis(tester);
+    await openHomeTaskCapture(tester);
+
+    const keyboardHeight = 340.0;
+    tester.view.viewInsets = FakeViewPadding(
+      bottom: keyboardHeight * tester.view.devicePixelRatio,
+    );
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+
+    final titleField = find.byKey(const ValueKey('quick-capture-title'));
+    final categorySelector = find.byKey(
+      const ValueKey('quick-capture-category'),
+    );
+    final cancelAction = find.text('Cancel');
+    final addAction = find.text('Add');
+
+    await tester.enterText(titleField, 'First line\nSecond line\nThird line');
+    await tester.pumpAndSettle();
+
+    expect(titleField.hitTestable(), findsOneWidget);
+    expect(categorySelector.hitTestable(), findsOneWidget);
+    expect(cancelAction.hitTestable(), findsOneWidget);
+    expect(addAction.hitTestable(), findsOneWidget);
+    expect(
+      tester.getBottomRight(categorySelector).dy,
+      lessThan(800 - keyboardHeight),
+    );
+    expect(
+      tester.getBottomRight(addAction).dy,
+      lessThan(800 - keyboardHeight),
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(cancelAction.hitTestable());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Add task'), findsNothing);
+    expect(await tasks.getTasks(), isEmpty);
+    expect(widgetRefreshCount, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('long task title scrolls with keyboard open and keeps controls', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(360, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final school = await categories.createCategory('School', 0xFF6750A4);
+    await pumpKedis(tester);
+    await openHomeTaskCapture(tester);
+
+    const keyboardHeight = 340.0;
+    tester.view.viewInsets = FakeViewPadding(
+      bottom: keyboardHeight * tester.view.devicePixelRatio,
+    );
+    addTearDown(tester.view.resetViewInsets);
+    await tester.pumpAndSettle();
+
+    final titleField = find.byKey(const ValueKey('quick-capture-title'));
+    final categorySelector = find.byKey(
+      const ValueKey('quick-capture-category'),
+    );
+    final cancelAction = find.text('Cancel');
+    final addAction = find.text('Add');
+    final longTitle = List.generate(
+      32,
+      (index) => 'Long task title line ${index + 1}',
+    ).join('\n');
+
+    await tester.enterText(titleField, longTitle);
+    await tester.pumpAndSettle();
+
+    final editableText = tester.widget<EditableText>(
+      find.descendant(of: titleField, matching: find.byType(EditableText)),
+    );
+    expect(editableText.controller.text, longTitle);
+    expect(tester.widget<TextField>(titleField).maxLines, isNull);
+
+    final inputScroll = find.descendant(
+      of: titleField,
+      matching: find.byType(Scrollable),
+    );
+    expect(inputScroll, findsOneWidget);
+    expect(
+      tester.state<ScrollableState>(inputScroll).position.maxScrollExtent,
+      greaterThan(0),
+    );
+
+    expect(titleField.hitTestable(), findsOneWidget);
+    expect(categorySelector.hitTestable(), findsOneWidget);
+    expect(cancelAction.hitTestable(), findsOneWidget);
+    expect(addAction.hitTestable(), findsOneWidget);
+    expect(
+      tester.getBottomRight(categorySelector).dy,
+      lessThan(800 - keyboardHeight),
+    );
+    expect(
+      tester.getBottomRight(addAction).dy,
+      lessThan(800 - keyboardHeight),
+    );
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(categorySelector.hitTestable());
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        ValueKey('quick-capture-category-option-${school.id}'),
+      ).hitTestable(),
+    );
+    await pumpUntil(tester, () {
+      final selectedCategory = find.byKey(
+        const ValueKey('quick-capture-selected-category'),
+      );
+      return selectedCategory.evaluate().isNotEmpty &&
+          tester.widget<Text>(selectedCategory).data == school.name &&
+          find
+              .byKey(ValueKey('quick-capture-category-option-${school.id}'))
+              .evaluate()
+              .isEmpty;
+    }, 'The selected category did not update with the keyboard open.');
+
+    expect(titleField.hitTestable(), findsOneWidget);
+    expect(categorySelector.hitTestable(), findsOneWidget);
+    expect(addAction.hitTestable(), findsOneWidget);
+    expect(cancelAction.hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(addAction.hitTestable());
+    await pumpUntil(
+      tester,
+      () => find.text('Add task').evaluate().isEmpty,
+      'Quick-capture dialog did not close after creating the task.',
+    );
+
+    final created = (await tasks.getTasks(categoryId: school.id)).single;
+    expect(created.title, longTitle);
+    expect(created.categoryId, school.id);
+    expect(widgetRefreshCount, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('home quick capture creates in a selected category', (
     WidgetTester tester,
   ) async {

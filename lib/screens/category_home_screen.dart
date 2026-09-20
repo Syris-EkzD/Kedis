@@ -140,15 +140,17 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    key: const ValueKey('quick-capture-title'),
-                    autofocus: true,
-                    minLines: 1,
-                    maxLines: null,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(hintText: 'Task title'),
-                    onChanged: (value) => draftTitle = value,
-                    onSubmitted: submit,
+                  Flexible(
+                    child: TextField(
+                      key: const ValueKey('quick-capture-title'),
+                      autofocus: true,
+                      minLines: 1,
+                      maxLines: null,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(hintText: 'Task title'),
+                      onChanged: (value) => draftTitle = value,
+                      onSubmitted: submit,
+                    ),
                   ),
                   const SizedBox(height: KedisSpacing.medium),
                   MenuAnchor(
