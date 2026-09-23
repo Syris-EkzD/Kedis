@@ -22,7 +22,7 @@ This file separates working behavior from approved Kedis V1 work and later ideas
 - [x] User-created task categories
 - [x] Rename custom categories
 - [x] User-selected persistent category colors
-- [x] Safe category deletion that moves tasks to Inbox
+- [x] Recoverable category deletion with explicit move-tasks or grouped-Trash choices
 - [x] Durable Inbox/default category
 - [x] Migrate existing tasks into Inbox without data loss
 - [x] Create tasks within the current category
@@ -33,7 +33,9 @@ This file separates working behavior from approved Kedis V1 work and later ideas
 - [x] Move tasks between existing categories
 - [x] Keep the Android widget global across categories
 - [x] Exclude trashed tasks from normal views, category counts/previews, and widget reads/actions
-- [x] Move trashed tasks to Inbox when deleting their custom category
+- [x] Group deleted categories separately from standalone deleted tasks
+- [x] Selectively restore or permanently delete grouped tasks
+- [x] Batch restore or permanently delete explicitly selected standalone tasks
 
 ## Planned Kedis V1
 

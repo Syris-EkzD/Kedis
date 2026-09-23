@@ -575,6 +575,23 @@ void main() {
     expect(find.byKey(const ValueKey('category-home-grid')), findsOneWidget);
   });
 
+  testWidgets('opens the grouped Trash screen through Settings', (
+    WidgetTester tester,
+  ) async {
+    final category = await categories.createCategory('Archived', 0xFF6750A4);
+    await categories.softDeleteEmptyCategory(category.id);
+    await pumpKedis(tester);
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Trash'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Deleted Categories'), findsOneWidget);
+    expect(find.text('Archived'), findsOneWidget);
+    expect(find.text('Deleted Tasks'), findsOneWidget);
+  });
+
   testWidgets('home quick capture creates a task in Inbox', (
     WidgetTester tester,
   ) async {
@@ -1239,12 +1256,23 @@ void main() {
     await tester.tap(find.text('Delete category'));
     await pumpUntil(
       tester,
-      () =>
-          find.text('Its tasks will be moved to Inbox.').evaluate().isNotEmpty,
+      () => find.text('Move tasks elsewhere').evaluate().isNotEmpty,
       'Delete-category confirmation did not appear.',
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Delete'));
+    await tester.tap(find.text('Move tasks elsewhere'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<DropdownButtonFormField<int>>(
+            find.byKey(const ValueKey('category-delete-destination')),
+          )
+          .initialValue,
+      (await categories.getInbox()).id,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('confirm-category-destination')),
+    );
     await pumpUntil(
       tester,
       () => find.text('Programming').evaluate().isEmpty,
@@ -1256,6 +1284,62 @@ void main() {
       (await tasks.getTasks(categoryId: inbox.id)).single.title,
       'Keep task',
     );
+  });
+
+  testWidgets('empty category deletion can be cancelled or moved to Trash', (
+    WidgetTester tester,
+  ) async {
+    final category = await categories.createCategory('Empty', 0xFF6750A4);
+    await pumpKedis(tester);
+
+    await tester.tap(find.byTooltip('Category actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete category'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('The category will move to Trash and can be restored later.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(
+      (await categories.getCategories()).any((item) => item.id == category.id),
+      isTrue,
+    );
+
+    await tester.tap(find.byTooltip('Category actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete category'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('confirm-empty-category-trash')),
+    );
+    await tester.pumpAndSettle();
+
+    expect((await categories.getDeletedCategories()).single.id, category.id);
+    expect(widgetRefreshCount, 1);
+  });
+
+  testWidgets('nonempty category can move category and tasks to Trash', (
+    WidgetTester tester,
+  ) async {
+    final category = await categories.createCategory('Project', 0xFF6750A4);
+    final task = await tasks.createTask('Grouped', categoryId: category.id);
+    await pumpKedis(tester);
+
+    await tester.tap(find.byTooltip('Category actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete category'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('delete-category-trash-tasks')));
+    await tester.pumpAndSettle();
+
+    expect((await categories.getDeletedCategories()).single.id, category.id);
+    expect(
+      (await tasks.getDeletedTasksForCategoryGroup(category.id)).single.id,
+      task.id,
+    );
+    expect(widgetRefreshCount, 1);
   });
 
   testWidgets('keeps active tasks before newest-first completed tasks', (

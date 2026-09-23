@@ -6,11 +6,13 @@ import 'support/fake_repositories.dart';
 
 void main() {
   late FakeTaskRepository tasks;
+  late FakeCategoryRepository categories;
   late int widgetRefreshCount;
 
   setUp(() {
     final repositories = FakeRepositories();
     tasks = repositories.tasks;
+    categories = repositories.categories;
     widgetRefreshCount = 0;
   });
 
@@ -31,6 +33,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: TrashScreen(
+          categoryRepository: categories,
           taskRepository: tasks,
           widgetRefresh: () async {
             widgetRefreshCount += 1;
@@ -45,6 +48,16 @@ void main() {
           find.byType(ListTile).evaluate().isNotEmpty,
       'Trash screen did not finish loading.',
     );
+  }
+
+  Future<void> selectTask(WidgetTester tester, int taskId) async {
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(ValueKey('deleted-task-$taskId')),
+        matching: find.byType(Checkbox),
+      ),
+    );
+    await tester.pump();
   }
 
   testWidgets('shows an empty state when Trash has no tasks', (
@@ -107,5 +120,460 @@ void main() {
     expect(await tasks.getDeletedTasks(), isEmpty);
     expect(await tasks.restoreTask(task.id), isNull);
     expect(widgetRefreshCount, 1);
+  });
+
+  testWidgets('shows grouped and standalone tasks without duplication', (
+    WidgetTester tester,
+  ) async {
+    final category = await categories.createCategory('Project', 0xFF6750A4);
+    final grouped = await tasks.createTask('Grouped', categoryId: category.id);
+    final standalone = await tasks.createTask(
+      'Standalone',
+      categoryId: category.id,
+    );
+    await tasks.deleteTask(standalone.id);
+    await categories.softDeleteCategoryWithTasks(category.id);
+
+    await pumpTrash(tester);
+
+    expect(find.text('Deleted Categories'), findsOneWidget);
+    expect(find.text('Deleted Tasks'), findsOneWidget);
+    expect(find.text('Project'), findsOneWidget);
+    expect(find.text('1 grouped task'), findsOneWidget);
+    expect(find.text('Standalone'), findsOneWidget);
+    expect(find.text('Grouped'), findsNothing);
+
+    await tester.tap(find.byKey(ValueKey('deleted-category-${category.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('Grouped'), findsOneWidget);
+    expect(find.byKey(ValueKey('deleted-task-${grouped.id}')), findsOneWidget);
+    expect(find.text('Standalone'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('restores a category with empty selection and detaches tasks', (
+    WidgetTester tester,
+  ) async {
+    final category = await categories.createCategory('Project', 0xFF6750A4);
+    final task = await tasks.createTask(
+      'Keep deleted',
+      categoryId: category.id,
+    );
+    await categories.softDeleteCategoryWithTasks(category.id);
+    await pumpTrash(tester);
+
+    await tester.tap(find.byTooltip('Deleted category actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Restore category'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('0 selected'), findsOneWidget);
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.byKey(ValueKey('category-dialog-task-${task.id}')),
+          )
+          .value,
+      isFalse,
+    );
+    await tester.tap(find.byKey(const ValueKey('confirm-category-restore')));
+    await pumpUntil(
+      tester,
+      () => find.text('Project').evaluate().isEmpty,
+      'Restored category remained in Deleted Categories.',
+    );
+
+    expect(
+      (await categories.getCategories()).any((item) => item.id == category.id),
+      isTrue,
+    );
+    final remaining = (await tasks.getStandaloneDeletedTasks()).single;
+    expect(remaining.id, task.id);
+    expect(remaining.categoryId, isNull);
+    expect(widgetRefreshCount, 1);
+  });
+
+  testWidgets('restores only explicitly selected grouped tasks', (
+    WidgetTester tester,
+  ) async {
+    final category = await categories.createCategory('Project', 0xFF6750A4);
+    final first = await tasks.createTask('First', categoryId: category.id);
+    final second = await tasks.createTask('Second', categoryId: category.id);
+    await categories.softDeleteCategoryWithTasks(category.id);
+    await pumpTrash(tester);
+
+    await tester.tap(find.byTooltip('Deleted category actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Restore category'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('category-dialog-task-${first.id}')));
+    await tester.pump();
+    expect(find.text('1 selected'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('confirm-category-restore')));
+    await tester.pumpAndSettle();
+
+    expect((await tasks.getTasks()).single.id, first.id);
+    expect((await tasks.getStandaloneDeletedTasks()).single.id, second.id);
+  });
+
+  testWidgets('select all and deselect all are scoped to a category dialog', (
+    WidgetTester tester,
+  ) async {
+    final category = await categories.createCategory('Project', 0xFF6750A4);
+    await tasks.createTask('First', categoryId: category.id);
+    await tasks.createTask('Second', categoryId: category.id);
+    await categories.softDeleteCategoryWithTasks(category.id);
+    await pumpTrash(tester);
+
+    await tester.tap(find.byTooltip('Deleted category actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete category permanently'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select All'));
+    await tester.pump();
+    expect(find.text('2 selected'), findsOneWidget);
+    await tester.tap(find.text('Deselect All'));
+    await tester.pump();
+    expect(find.text('0 selected'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('confirm-category-permanent-delete')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(await categories.getDeletedCategories(), isEmpty);
+    expect(await tasks.getStandaloneDeletedTasks(), hasLength(2));
+  });
+
+  testWidgets(
+    'grouped task restore requires an Inbox-preselected destination',
+    (WidgetTester tester) async {
+      final category = await categories.createCategory('Project', 0xFF6750A4);
+      final task = await tasks.createTask('Grouped', categoryId: category.id);
+      await categories.softDeleteCategoryWithTasks(category.id);
+      await pumpTrash(tester);
+      await tester.tap(find.byKey(ValueKey('deleted-category-${category.id}')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Restore Grouped'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<DropdownButtonFormField<int>>(
+              find.byKey(const ValueKey('trash-restore-destination')),
+            )
+            .initialValue,
+        (await categories.getInbox()).id,
+      );
+      await tester.tap(find.byKey(const ValueKey('confirm-trash-destination')));
+      await tester.pumpAndSettle();
+
+      expect((await tasks.getTasks()).single.id, task.id);
+      expect(await tasks.getDeletedTasksForCategoryGroup(category.id), isEmpty);
+      expect((await categories.getDeletedCategories()).single.id, category.id);
+    },
+  );
+
+  testWidgets('categoryless standalone restore requires a destination', (
+    WidgetTester tester,
+  ) async {
+    final category = await categories.createCategory('Project', 0xFF6750A4);
+    final task = await tasks.createTask('Detached', categoryId: category.id);
+    await categories.softDeleteCategoryWithTasks(category.id);
+    await categories.restoreDeletedCategory(category.id, const []);
+    await pumpTrash(tester);
+
+    await tester.tap(find.byTooltip('Restore Detached'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('trash-restore-destination')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('confirm-trash-destination')));
+    await tester.pumpAndSettle();
+
+    final restored = (await tasks.getTasks()).single;
+    expect(restored.id, task.id);
+    expect(restored.categoryId, (await categories.getInbox()).id);
+  });
+
+  testWidgets('batch restores selected standalone tasks', (
+    WidgetTester tester,
+  ) async {
+    final first = await tasks.createTask('First');
+    final second = await tasks.createTask('Second');
+    await tasks.deleteTask(first.id);
+    await tasks.deleteTask(second.id);
+    await pumpTrash(tester);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(ValueKey('deleted-task-${first.id}')),
+        matching: find.byType(Checkbox),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byTooltip('Restore selected tasks'));
+    await tester.pumpAndSettle();
+
+    expect((await tasks.getTasks()).single.id, first.id);
+    expect((await tasks.getStandaloneDeletedTasks()).single.id, second.id);
+    expect(widgetRefreshCount, 1);
+  });
+
+  testWidgets('batch permanent deletion can be cancelled or confirmed', (
+    WidgetTester tester,
+  ) async {
+    final task = await tasks.createTask('Selected');
+    await tasks.deleteTask(task.id);
+    await pumpTrash(tester);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(ValueKey('deleted-task-${task.id}')),
+        matching: find.byType(Checkbox),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Permanently delete selected tasks'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(await tasks.getStandaloneDeletedTasks(), hasLength(1));
+
+    await tester.tap(find.byTooltip('Permanently delete selected tasks'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-batch-delete')));
+    await tester.pumpAndSettle();
+    expect(await tasks.getStandaloneDeletedTasks(), isEmpty);
+  });
+
+  testWidgets('restores only selected grouped tasks to chosen destination', (
+    WidgetTester tester,
+  ) async {
+    final category = await categories.createCategory('Project', 0xFF6750A4);
+    final destination = await categories.createCategory('Work', 0xFF006C4C);
+    final grouped = <int>[];
+    for (var index = 0; index < 5; index += 1) {
+      grouped.add(
+        (await tasks.createTask('Grouped $index', categoryId: category.id)).id,
+      );
+    }
+    await categories.softDeleteCategoryWithTasks(category.id);
+    await pumpTrash(tester);
+    await tester.tap(find.byKey(ValueKey('deleted-category-${category.id}')));
+    await tester.pumpAndSettle();
+    await selectTask(tester, grouped[0]);
+    await selectTask(tester, grouped[1]);
+
+    expect(find.text('2 selected'), findsOneWidget);
+    await tester.tap(
+      find.byKey(ValueKey('restore-group-selection-${category.id}')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('trash-restore-destination')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Work').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-trash-destination')));
+    await tester.pumpAndSettle();
+
+    expect(
+      (await tasks.getTasks(categoryId: destination.id)).map((task) => task.id),
+      containsAll(grouped.take(2)),
+    );
+    expect(
+      (await tasks.getDeletedTasksForCategoryGroup(category.id))
+          .map((task) => task.id),
+      containsAll(grouped.skip(2)),
+    );
+    expect((await categories.getDeletedCategories()).single.id, category.id);
+    expect(find.text('0 selected'), findsOneWidget);
+    expect(widgetRefreshCount, 1);
+  });
+
+  testWidgets('grouped batch permanent deletion cancels and deletes selected', (
+    WidgetTester tester,
+  ) async {
+    final category = await categories.createCategory('Project', 0xFF6750A4);
+    final grouped = <int>[];
+    for (var index = 0; index < 5; index += 1) {
+      grouped.add(
+        (await tasks.createTask('Grouped $index', categoryId: category.id)).id,
+      );
+    }
+    await categories.softDeleteCategoryWithTasks(category.id);
+    await pumpTrash(tester);
+    await tester.tap(find.byKey(ValueKey('deleted-category-${category.id}')));
+    await tester.pumpAndSettle();
+    await selectTask(tester, grouped[0]);
+    await selectTask(tester, grouped[1]);
+
+    final deleteButton = find.byKey(
+      ValueKey('delete-group-selection-${category.id}'),
+    );
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Permanently delete 2 selected tasks?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(
+      await tasks.getDeletedTasksForCategoryGroup(category.id),
+      hasLength(5),
+    );
+
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey('confirm-group-batch-delete-${category.id}')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      (await tasks.getDeletedTasksForCategoryGroup(category.id))
+          .map((task) => task.id),
+      containsAll(grouped.skip(2)),
+    );
+    expect(
+      await tasks.getDeletedTasksForCategoryGroup(category.id),
+      hasLength(3),
+    );
+    expect((await categories.getDeletedCategories()).single.id, category.id);
+  });
+
+  testWidgets(
+    'expanded group selection stays scoped and category dialog starts empty',
+    (WidgetTester tester) async {
+      final firstCategory = await categories.createCategory(
+        'First',
+        0xFF6750A4,
+      );
+      final secondCategory = await categories.createCategory(
+        'Second',
+        0xFF006C4C,
+      );
+      final firstTask = await tasks.createTask(
+        'First task',
+        categoryId: firstCategory.id,
+      );
+      final secondTask = await tasks.createTask(
+        'Second task',
+        categoryId: secondCategory.id,
+      );
+      await categories.softDeleteCategoryWithTasks(firstCategory.id);
+      await categories.softDeleteCategoryWithTasks(secondCategory.id);
+      await pumpTrash(tester);
+      await tester.tap(
+        find.byKey(ValueKey('deleted-category-${firstCategory.id}')),
+      );
+      await tester.tap(
+        find.byKey(ValueKey('deleted-category-${secondCategory.id}')),
+      );
+      await tester.pumpAndSettle();
+
+      final firstCard = find.ancestor(
+        of: find.byKey(ValueKey('deleted-category-${firstCategory.id}')),
+        matching: find.byType(Card),
+      );
+      await tester.tap(
+        find.descendant(of: firstCard, matching: find.text('Select All')),
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(
+                of: find.byKey(ValueKey('deleted-task-${firstTask.id}')),
+                matching: find.byType(Checkbox),
+              ),
+            )
+            .value,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(
+                of: find.byKey(ValueKey('deleted-task-${secondTask.id}')),
+                matching: find.byType(Checkbox),
+              ),
+            )
+            .value,
+        isFalse,
+      );
+      await tester.tap(
+        find.descendant(of: firstCard, matching: find.text('Deselect All')),
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(
+                of: find.byKey(ValueKey('deleted-task-${firstTask.id}')),
+                matching: find.byType(Checkbox),
+              ),
+            )
+            .value,
+        isFalse,
+      );
+      await selectTask(tester, firstTask.id);
+
+      await tester.tap(
+        find.descendant(
+          of: firstCard,
+          matching: find.byTooltip('Deleted category actions'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Restore category'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('0 selected'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<CheckboxListTile>(
+              find.byKey(ValueKey('category-dialog-task-${firstTask.id}')),
+            )
+            .value,
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets('group task controls fit a narrow Android viewport', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final category = await categories.createCategory('Project', 0xFF6750A4);
+    final task = await tasks.createTask('Grouped', categoryId: category.id);
+    await categories.softDeleteCategoryWithTasks(category.id);
+    await pumpTrash(tester);
+    await tester.tap(find.byKey(ValueKey('deleted-category-${category.id}')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(ValueKey('restore-group-selection-${category.id}')),
+          )
+          .onPressed,
+      isNull,
+    );
+    await selectTask(tester, task.id);
+
+    expect(find.text('1 selected'), findsOneWidget);
+    expect(
+      find.byKey(ValueKey('restore-group-selection-${category.id}')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ValueKey('delete-group-selection-${category.id}')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
   });
 }

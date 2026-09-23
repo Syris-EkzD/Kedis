@@ -112,6 +112,7 @@ class CategoryRepository {
     return _getCategory(database, id);
   }
 
+  @Deprecated('Use the recoverable category deletion operations instead.')
   Future<int?> deleteCategory(int id) async {
     final database = await _database.database;
     return database.transaction((transaction) async {
