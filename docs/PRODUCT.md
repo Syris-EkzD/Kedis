@@ -67,7 +67,7 @@ Inbox cannot be renamed, recolored, or deleted in Kedis V1.
 
 ## Safe category deletion
 
-Deleting a custom category never deletes its tasks. Kedis first moves every normal and trashed task from that category to Inbox and then removes the category. A trashed task restored after its original category was deleted therefore returns to Inbox. The UI confirms category deletion behavior before deletion.
+Deleting an empty custom category moves the category to Trash. For a nonempty category, Kedis explicitly offers to move its active and completed tasks to a selected active category, or move those tasks to Trash as a recoverable group with the category. Previously deleted standalone tasks remain deleted and are detached from the category. Inbox cannot be deleted.
 
 ## Category home
 
@@ -100,7 +100,9 @@ Task moves change only category assignment; task identity, completion state, and
 
 ## Trash
 
-Deleting a task sets a recoverable Trash state rather than physically removing the row. Normal category views, home counts/previews, and the Android widget exclude trashed tasks. Trash is available through Settings and supports restoring individual tasks or permanently deleting them after explicit confirmation. Trash contents are retained indefinitely; Kedis does not automatically empty Trash or implement age-based Trash reminders in this batch.
+Deleting a task sets a recoverable Trash state rather than physically removing the row. Normal category views, home counts/previews, and the Android widget exclude trashed tasks. Trash is available through Settings and separates deleted category groups from standalone deleted tasks.
+
+Category restore and permanent deletion begin with no grouped tasks selected. Only explicitly selected grouped tasks receive the category action; unselected tasks remain recoverable as categoryless standalone deleted tasks. Categoryless and grouped tasks require an explicit active destination when restored individually. Standalone tasks support scoped batch restore and confirmed batch permanent deletion. Trash contents are retained indefinitely; Kedis does not automatically empty Trash or implement age-based Trash reminders in this batch.
 
 Immediate deletion Undo remains available and restores the same soft-deleted task row.
 
