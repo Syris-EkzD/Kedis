@@ -11,6 +11,7 @@ import 'package:kedis/theme/kedis_design.dart';
 import 'package:kedis/widgets/category_card.dart';
 import 'package:kedis/widgets/category_editor_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 class CategoryHomeScreen extends StatefulWidget {
   const CategoryHomeScreen({
@@ -38,7 +39,7 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
   static const _listPreviewLimit = 3;
   static const _gridSpacing = KedisSpacing.small;
   static const _minimumGridCardWidth = 156.0;
-  static const _gridBottomPadding = 136.0;
+  static const _gridBottomPadding = 184.0;
 
   List<TaskCategory> _categories = const [];
   List<Task> _tasks = const [];
@@ -490,11 +491,7 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
         final contentWidth = constraints.maxWidth - horizontalPadding;
         final twoColumns =
             contentWidth >= (_minimumGridCardWidth * 2) + _gridSpacing;
-        final cardWidth = twoColumns
-            ? (contentWidth - _gridSpacing) / 2
-            : contentWidth;
-
-        return SingleChildScrollView(
+        return MasonryGridView.builder(
           key: const ValueKey('category-home-grid'),
           padding: const EdgeInsets.fromLTRB(
             KedisSpacing.medium,
@@ -502,21 +499,20 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
             KedisSpacing.medium,
             _gridBottomPadding,
           ),
-          child: Wrap(
-            spacing: _gridSpacing,
-            runSpacing: KedisSpacing.medium,
-            children: [
-              for (final category in _categories)
-                SizedBox(
-                  width: cardWidth,
-                  child: _buildCategoryCard(
-                    category,
-                    tasksByCategory[category.id] ?? const [],
-                    isGridLayout: true,
-                  ),
-                ),
-            ],
+          gridDelegate: SliverSimpleGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: twoColumns ? 2 : 1,
           ),
+          mainAxisSpacing: KedisSpacing.medium,
+          crossAxisSpacing: _gridSpacing,
+          itemCount: _categories.length,
+          itemBuilder: (context, index) {
+            final category = _categories[index];
+            return _buildCategoryCard(
+              category,
+              tasksByCategory[category.id] ?? const [],
+              isGridLayout: true,
+            );
+          },
         );
       },
     );

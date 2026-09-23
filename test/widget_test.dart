@@ -1,4 +1,5 @@
 import 'package:kedis/main.dart';
+import 'package:kedis/models/task_category.dart';
 import 'package:kedis/settings/home_layout_controller.dart';
 import 'package:kedis/settings/home_layout_preference_store.dart';
 import 'package:kedis/settings/theme_controller.dart';
@@ -7,6 +8,7 @@ import 'package:kedis/widgets/category_card.dart';
 import 'package:kedis/widgets/editable_task_item.dart';
 import 'package:kedis/widgets/editing_task_item.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_repositories.dart';
@@ -210,7 +212,7 @@ void main() {
   testWidgets('Grid cards size naturally up to the maximum height', (
     WidgetTester tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(360, 800));
+    await tester.binding.setSurfaceSize(const Size(390, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     homeLayoutController = HomeLayoutController(
       homeLayoutPreferenceStore,
@@ -237,6 +239,8 @@ void main() {
     }
 
     await pumpKedis(tester);
+
+    expect(find.byType(MasonryGridView), findsOneWidget);
 
     final inboxCard = find.byKey(ValueKey('category-card-${inbox.id}'));
     final programmingCard = find.byKey(
@@ -272,6 +276,10 @@ void main() {
     expect(
       tester.getTopLeft(inboxCard).dx,
       lessThan(tester.getTopLeft(programmingCard).dx),
+    );
+    expect(
+      tester.getTopLeft(inboxCard).dy,
+      tester.getTopLeft(programmingCard).dy,
     );
 
     final programmingTitle = tester.widget<Text>(
@@ -346,6 +354,56 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Grid packs shorter cards below the shorter masonry column', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    homeLayoutController = HomeLayoutController(
+      homeLayoutPreferenceStore,
+      initialLayoutMode: HomeLayoutMode.grid,
+    );
+
+    final inbox = await categories.getInbox();
+    final tall = await categories.createCategory('Tall', 0xFF6750A4);
+    final nextShort = await categories.createCategory('Next short', 0xFF006C4C);
+    final finalShort = await categories.createCategory(
+      'Final short',
+      0xFF9C4146,
+    );
+
+    for (final title in ['One', 'Two', 'Three']) {
+      await tasks.createTask(title, categoryId: tall.id);
+    }
+
+    await pumpKedis(tester);
+
+    final inboxCard = find.byKey(ValueKey('category-card-${inbox.id}'));
+    final tallCard = find.byKey(ValueKey('category-card-${tall.id}'));
+    final nextShortCard = find.byKey(ValueKey('category-card-${nextShort.id}'));
+    final finalShortCard = find.byKey(
+      ValueKey('category-card-${finalShort.id}'),
+    );
+
+    final inboxBottom = tester.getBottomLeft(inboxCard).dy;
+    final tallBottom = tester.getBottomLeft(tallCard).dy;
+    final nextShortTop = tester.getTopLeft(nextShortCard).dy;
+    final finalShortTop = tester.getTopLeft(finalShortCard).dy;
+
+    expect(
+      tester.getTopLeft(inboxCard).dx,
+      lessThan(tester.getTopLeft(tallCard).dx),
+    );
+    expect(
+      tester.getTopLeft(nextShortCard).dx,
+      tester.getTopLeft(inboxCard).dx,
+    );
+    expect(nextShortTop, greaterThan(inboxBottom));
+    expect(nextShortTop, lessThan(tallBottom));
+    expect(finalShortTop, greaterThan(tallBottom));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Grid falls back to one column on a narrow surface', (
     WidgetTester tester,
   ) async {
@@ -360,6 +418,8 @@ void main() {
     final school = await categories.createCategory('School', 0xFF6750A4);
 
     await pumpKedis(tester);
+
+    expect(find.byType(MasonryGridView), findsOneWidget);
 
     final inboxCard = find.byKey(ValueKey('category-card-${inbox.id}'));
     final schoolCard = find.byKey(ValueKey('category-card-${school.id}'));
@@ -376,6 +436,46 @@ void main() {
     expect(
       tester.getSize(schoolCard).height,
       lessThanOrEqualTo(CategoryCard.gridMaxHeight),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Grid leaves bottom clearance above the Home FAB', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    homeLayoutController = HomeLayoutController(
+      homeLayoutPreferenceStore,
+      initialLayoutMode: HomeLayoutMode.grid,
+    );
+
+    TaskCategory lastCategory = await categories.getInbox();
+    for (var index = 1; index <= 12; index += 1) {
+      lastCategory = await categories.createCategory(
+        'Category $index',
+        0xFF6750A4,
+      );
+    }
+
+    await pumpKedis(tester);
+
+    final grid = find.byKey(const ValueKey('category-home-grid'));
+    final lastCard = find.byKey(ValueKey('category-card-${lastCategory.id}'));
+    final fab = find.byKey(const ValueKey('home-create-menu'));
+
+    final scrollable = tester.widget<Scrollable>(
+      find.descendant(of: grid, matching: find.byType(Scrollable)),
+    );
+    scrollable.controller!.jumpTo(
+      scrollable.controller!.position.maxScrollExtent,
+    );
+    await tester.pumpAndSettle();
+
+    expect(lastCard, findsOneWidget);
+    expect(
+      tester.getBottomLeft(lastCard).dy,
+      lessThan(tester.getTopLeft(fab).dy),
     );
     expect(tester.takeException(), isNull);
   });

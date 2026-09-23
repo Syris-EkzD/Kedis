@@ -38,7 +38,7 @@ The following behavior is implemented today and must remain reliable as Kedis V1
 - Refresh the widget after application-side task mutations.
 - Reload task state when the app resumes.
 - Select System, Light, or Dark application appearance and mirror it to the widget.
-- Select Grid or List category-home layout and persist that preference.
+- Select masonry Grid or List category-home layout and persist that preference.
 
 ## Custom categories
 
@@ -79,7 +79,7 @@ Each card shows:
 - Category color accent.
 - Active non-deleted task count.
 - Total non-deleted task count.
-- Up to three active-task previews.
+- Up to three active-task previews in List, or two in Grid.
 - A compact `+N more` indicator when additional active tasks exist.
 
 Completed tasks count toward the total but do not appear in category-card previews. Trashed tasks count toward neither active nor total values. Tapping a card opens the full normal task list for that category.
