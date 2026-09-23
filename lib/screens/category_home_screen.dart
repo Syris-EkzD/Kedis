@@ -502,7 +502,7 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
           gridDelegate: SliverSimpleGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: twoColumns ? 2 : 1,
           ),
-          mainAxisSpacing: KedisSpacing.medium,
+          mainAxisSpacing: _gridSpacing,
           crossAxisSpacing: _gridSpacing,
           itemCount: _categories.length,
           itemBuilder: (context, index) {
