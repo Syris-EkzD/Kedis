@@ -133,4 +133,42 @@ void main() {
     expect(restored?.categoryId, inbox.id);
     expect((await tasks.getTasks(categoryId: inbox.id)).single.id, task.id);
   });
+
+  test('legacy operations reject an already-deleted category', () async {
+    final category = await categories.createCategory('Archived', 0xFF6750A4);
+    final task = await tasks.createTask(
+      'Grouped task',
+      categoryId: category.id,
+    );
+    await categories.softDeleteCategoryWithTasks(category.id);
+    final categoryBefore = (await categories.getDeletedCategories()).single;
+    final taskBefore = (await tasks.getDeletedTasksForCategoryGroup(
+      category.id,
+    )).single;
+
+    await expectLater(
+      categories.renameCategory(category.id, 'Renamed'),
+      throwsA(isA<StateError>()),
+    );
+    await expectLater(
+      categories.updateCategoryColor(category.id, 0xFF006C4C),
+      throwsA(isA<StateError>()),
+    );
+    await expectLater(
+      categories.deleteCategory(category.id),
+      throwsA(isA<StateError>()),
+    );
+
+    final categoryAfter = (await categories.getDeletedCategories()).single;
+    final taskAfter = (await tasks.getDeletedTasksForCategoryGroup(category.id))
+        .single;
+    expect(categoryAfter.id, categoryBefore.id);
+    expect(categoryAfter.name, categoryBefore.name);
+    expect(categoryAfter.colorValue, categoryBefore.colorValue);
+    expect(categoryAfter.deletedAt, categoryBefore.deletedAt);
+    expect(taskAfter.id, task.id);
+    expect(taskAfter.categoryId, taskBefore.categoryId);
+    expect(taskAfter.deletedGroupCategoryId, taskBefore.deletedGroupCategoryId);
+    expect(taskAfter.deletedAt, taskBefore.deletedAt);
+  });
 }

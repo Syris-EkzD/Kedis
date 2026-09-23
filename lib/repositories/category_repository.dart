@@ -84,7 +84,7 @@ class CategoryRepository {
     final database = await _database.database;
     final current = await _getCategory(database, id);
     if (current == null) return null;
-    _ensureCustomCategory(current);
+    _ensureActiveCustomCategory(current);
     await _ensureNameAvailable(database, normalizedName, excludingId: id);
 
     await database.update(
@@ -101,12 +101,12 @@ class CategoryRepository {
     final database = await _database.database;
     final current = await _getCategory(database, id);
     if (current == null) return null;
-    _ensureCustomCategory(current);
+    _ensureActiveCustomCategory(current);
 
     await database.update(
       KedisDatabase.categoriesTable,
       {'color_value': colorValue},
-      where: 'id = ?',
+      where: 'id = ? AND deleted_at IS NULL',
       whereArgs: [id],
     );
     return _getCategory(database, id);
@@ -117,7 +117,7 @@ class CategoryRepository {
     return database.transaction((transaction) async {
       final current = await _getCategory(transaction, id);
       if (current == null) return null;
-      _ensureCustomCategory(current);
+      _ensureActiveCustomCategory(current);
 
       final inboxId = await KedisDatabase.getInboxId(transaction);
       final movedTasks = await transaction.update(
@@ -457,6 +457,13 @@ class CategoryRepository {
   void _ensureCustomCategory(TaskCategory category) {
     if (category.isSystem) {
       throw StateError('System categories cannot be changed or deleted.');
+    }
+  }
+
+  void _ensureActiveCustomCategory(TaskCategory category) {
+    _ensureCustomCategory(category);
+    if (category.deletedAt != null) {
+      throw StateError('Deleted categories cannot be changed or deleted.');
     }
   }
 }
