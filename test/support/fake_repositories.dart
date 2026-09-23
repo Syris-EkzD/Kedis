@@ -27,7 +27,8 @@ class FakeTaskRepository implements TaskRepository {
     }
 
     final resolvedCategoryId = categoryId ?? _store.inbox.id;
-    if (!_store.categories.containsKey(resolvedCategoryId)) {
+    if (_store.categories[resolvedCategoryId]?.deletedAt != null ||
+        !_store.categories.containsKey(resolvedCategoryId)) {
       throw StateError('Task category does not exist.');
     }
 
@@ -93,6 +94,20 @@ class FakeTaskRepository implements TaskRepository {
   }
 
   @override
+  Future<List<Task>> getStandaloneDeletedTasks() async {
+    return (await getDeletedTasks())
+        .where((task) => task.deletedGroupCategoryId == null)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<List<Task>> getDeletedTasksForCategoryGroup(int categoryId) async {
+    return (await getDeletedTasks())
+        .where((task) => task.deletedGroupCategoryId == categoryId)
+        .toList(growable: false);
+  }
+
+  @override
   Future<Task?> updateTaskTitle(int id, String title) async {
     final normalizedTitle = title.trim();
     if (normalizedTitle.isEmpty) {
@@ -115,7 +130,8 @@ class FakeTaskRepository implements TaskRepository {
     if (current == null || current.deletedAt != null) {
       return null;
     }
-    if (!_store.categories.containsKey(categoryId)) {
+    if (_store.categories[categoryId]?.deletedAt != null ||
+        !_store.categories.containsKey(categoryId)) {
       throw StateError('Task category does not exist.');
     }
 
@@ -177,12 +193,31 @@ class FakeTaskRepository implements TaskRepository {
   }
 
   @override
-  Future<Task?> restoreTask(int id) async {
+  Future<Task?> restoreTask(int id, {int? destinationCategoryId}) async {
     final current = _store.tasks[id];
     if (current == null || current.deletedAt == null) {
       return null;
     }
-    final restored = _copyTask(current, clearDeletedAt: true);
+    var restoredCategoryId = current.categoryId;
+    final retainedCategory = restoredCategoryId == null
+        ? null
+        : _store.categories[restoredCategoryId];
+    if (current.deletedGroupCategoryId != null ||
+        retainedCategory == null ||
+        retainedCategory.deletedAt != null) {
+      if (destinationCategoryId == null ||
+          _store.categories[destinationCategoryId]?.deletedAt != null ||
+          !_store.categories.containsKey(destinationCategoryId)) {
+        throw StateError('An active destination category is required.');
+      }
+      restoredCategoryId = destinationCategoryId;
+    }
+    final restored = _copyTask(
+      current,
+      categoryId: restoredCategoryId,
+      clearDeletedAt: true,
+      clearDeletedGroupCategoryId: true,
+    );
     _store.tasks[id] = restored;
     return restored;
   }
@@ -235,7 +270,9 @@ class FakeCategoryRepository implements CategoryRepository {
 
   @override
   Future<List<TaskCategory>> getCategories() async {
-    final result = _store.categories.values.toList();
+    final result = _store.categories.values
+        .where((category) => category.deletedAt == null)
+        .toList();
     result.sort((left, right) {
       if (left.isSystem != right.isSystem) {
         return left.isSystem ? -1 : 1;
@@ -248,6 +285,13 @@ class FakeCategoryRepository implements CategoryRepository {
       return left.id.compareTo(right.id);
     });
     return List.unmodifiable(result);
+  }
+
+  @override
+  Future<List<TaskCategory>> getDeletedCategories() async {
+    return _store.categories.values
+        .where((category) => !category.isSystem && category.deletedAt != null)
+        .toList(growable: false);
   }
 
   @override
@@ -324,6 +368,40 @@ class FakeCategoryRepository implements CategoryRepository {
   }
 
   @override
+  Future<CategoryDeletionResult> softDeleteEmptyCategory(int id) {
+    throw UnsupportedError('Not used by current widget tests.');
+  }
+
+  @override
+  Future<CategoryDeletionResult> softDeleteCategoryMovingTasks(
+    int sourceCategoryId,
+    int destinationCategoryId,
+  ) {
+    throw UnsupportedError('Not used by current widget tests.');
+  }
+
+  @override
+  Future<CategoryDeletionResult> softDeleteCategoryWithTasks(int id) {
+    throw UnsupportedError('Not used by current widget tests.');
+  }
+
+  @override
+  Future<CategorySelectionResult> restoreDeletedCategory(
+    int categoryId,
+    Iterable<int> selectedTaskIds,
+  ) {
+    throw UnsupportedError('Not used by current widget tests.');
+  }
+
+  @override
+  Future<CategorySelectionResult> permanentlyDeleteCategory(
+    int categoryId,
+    Iterable<int> selectedTaskIds,
+  ) {
+    throw UnsupportedError('Not used by current widget tests.');
+  }
+
+  @override
   Future<void> close() async {}
 
   String _normalizeName(String name) {
@@ -395,6 +473,8 @@ Task _copyTask(
   int? categoryId,
   DateTime? deletedAt,
   bool clearDeletedAt = false,
+  int? deletedGroupCategoryId,
+  bool clearDeletedGroupCategoryId = false,
 }) {
   return Task(
     id: task.id,
@@ -404,7 +484,9 @@ Task _copyTask(
     completedAt: clearCompletedAt ? null : completedAt ?? task.completedAt,
     categoryId: categoryId ?? task.categoryId,
     deletedAt: clearDeletedAt ? null : deletedAt ?? task.deletedAt,
-    deletedGroupCategoryId: task.deletedGroupCategoryId,
+    deletedGroupCategoryId: clearDeletedGroupCategoryId
+        ? null
+        : deletedGroupCategoryId ?? task.deletedGroupCategoryId,
   );
 }
 
