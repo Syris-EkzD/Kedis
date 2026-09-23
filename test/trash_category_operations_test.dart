@@ -549,6 +549,86 @@ void main() {
     );
     await _expectForeignKeysValid(database);
   });
+
+  test(
+    'batch restore preserves valid categories and assigns categoryless tasks',
+    () async {
+      final inbox = await categories.getInbox();
+      final retained = await categories.createCategory('Retained', 0xFF6750A4);
+      final retainedTask = await tasks.createTask(
+        'Retained task',
+        categoryId: retained.id,
+      );
+      await tasks.deleteTask(retainedTask.id);
+
+      final deletedCategory = await categories.createCategory(
+        'Deleted group',
+        0xFF006C4C,
+      );
+      final categorylessTask = await tasks.createTask(
+        'Categoryless task',
+        categoryId: deletedCategory.id,
+      );
+      await categories.softDeleteCategoryWithTasks(deletedCategory.id);
+      await categories.restoreDeletedCategory(deletedCategory.id, const []);
+
+      final restoredCount = await tasks.restoreStandaloneTasks([
+        retainedTask.id,
+        categorylessTask.id,
+      ], destinationCategoryId: inbox.id);
+      final restored = await tasks.getTasks();
+
+      expect(restoredCount, 2);
+      expect(
+        restored.singleWhere((task) => task.id == retainedTask.id).categoryId,
+        retained.id,
+      );
+      expect(
+        restored
+            .singleWhere((task) => task.id == categorylessTask.id)
+            .categoryId,
+        inbox.id,
+      );
+      expect(restored.every((task) => task.deletedAt == null), isTrue);
+      await _expectForeignKeysValid(database);
+    },
+  );
+
+  test('invalid standalone batch selection changes no tasks', () async {
+    final deleted = await tasks.createTask('Deleted');
+    final active = await tasks.createTask('Active');
+    await tasks.deleteTask(deleted.id);
+
+    await expectLater(
+      tasks.restoreStandaloneTasks([deleted.id, active.id]),
+      throwsStateError,
+    );
+    expect((await tasks.getStandaloneDeletedTasks()).single.id, deleted.id);
+    expect((await tasks.getTasks()).single.id, active.id);
+
+    await expectLater(
+      tasks.permanentlyDeleteStandaloneTasks([deleted.id, active.id]),
+      throwsStateError,
+    );
+    expect((await tasks.getStandaloneDeletedTasks()).single.id, deleted.id);
+    await _expectForeignKeysValid(database);
+  });
+
+  test(
+    'batch permanent deletion removes only selected standalone tasks',
+    () async {
+      final first = await tasks.createTask('First');
+      final second = await tasks.createTask('Second');
+      await tasks.deleteTask(first.id);
+      await tasks.deleteTask(second.id);
+
+      expect(await tasks.permanentlyDeleteStandaloneTasks([first.id]), 1);
+
+      expect((await tasks.getStandaloneDeletedTasks()).single.id, second.id);
+      expect(await tasks.restoreTask(first.id), isNull);
+      await _expectForeignKeysValid(database);
+    },
+  );
 }
 
 Future<_DeletedGroup> _createDeletedGroup(

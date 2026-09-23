@@ -277,6 +277,97 @@ class TaskRepository {
     return deletedRows > 0;
   }
 
+  Future<int> restoreStandaloneTasks(
+    Iterable<int> taskIds, {
+    int? destinationCategoryId,
+  }) async {
+    final selectedIds = taskIds.toList(growable: false);
+    _ensureUniqueSelection(selectedIds);
+    if (selectedIds.isEmpty) return 0;
+
+    final database = await _database.database;
+    return database.transaction((transaction) async {
+      final rows = await transaction.query(
+        KedisDatabase.tasksTable,
+        where:
+            '''
+          id IN (${_placeholders(selectedIds.length)})
+          AND deleted_at IS NOT NULL
+          AND deleted_group_category_id IS NULL
+        ''',
+        whereArgs: selectedIds,
+      );
+      if (rows.length != selectedIds.length) {
+        throw StateError('Every selected task must be standalone in Trash.');
+      }
+
+      final selectedTasks = rows.map(Task.fromMap).toList(growable: false);
+      final destinationNeeded = <Task>[];
+      for (final task in selectedTasks) {
+        final categoryId = task.categoryId;
+        if (categoryId == null ||
+            !await _isActiveCategory(transaction, categoryId)) {
+          destinationNeeded.add(task);
+        }
+      }
+      if (destinationNeeded.isNotEmpty) {
+        if (destinationCategoryId == null) {
+          throw ArgumentError.notNull('destinationCategoryId');
+        }
+        await _requireActiveCategory(transaction, destinationCategoryId);
+      }
+
+      for (final task in selectedTasks) {
+        final retainedCategoryId = task.categoryId;
+        final useRetainedCategory =
+            retainedCategoryId != null &&
+            await _isActiveCategory(transaction, retainedCategoryId);
+        await transaction.update(
+          KedisDatabase.tasksTable,
+          {
+            'category_id': useRetainedCategory
+                ? retainedCategoryId
+                : destinationCategoryId,
+            'deleted_at': null,
+            'deleted_group_category_id': null,
+          },
+          where: 'id = ? AND deleted_at IS NOT NULL',
+          whereArgs: [task.id],
+        );
+      }
+      return selectedTasks.length;
+    });
+  }
+
+  Future<int> permanentlyDeleteStandaloneTasks(Iterable<int> taskIds) async {
+    final selectedIds = taskIds.toList(growable: false);
+    _ensureUniqueSelection(selectedIds);
+    if (selectedIds.isEmpty) return 0;
+
+    final database = await _database.database;
+    return database.transaction((transaction) async {
+      final rows = await transaction.query(
+        KedisDatabase.tasksTable,
+        columns: ['id'],
+        where:
+            '''
+          id IN (${_placeholders(selectedIds.length)})
+          AND deleted_at IS NOT NULL
+          AND deleted_group_category_id IS NULL
+        ''',
+        whereArgs: selectedIds,
+      );
+      if (rows.length != selectedIds.length) {
+        throw StateError('Every selected task must be standalone in Trash.');
+      }
+      return transaction.delete(
+        KedisDatabase.tasksTable,
+        where: 'id IN (${_placeholders(selectedIds.length)})',
+        whereArgs: selectedIds,
+      );
+    });
+  }
+
   Future<void> close() async {
     if (_ownsDatabase) {
       await _database.close();
@@ -329,4 +420,12 @@ class TaskRepository {
     await _requireActiveCategory(database, destinationCategoryId);
     return destinationCategoryId;
   }
+
+  void _ensureUniqueSelection(List<int> selectedIds) {
+    if (selectedIds.toSet().length != selectedIds.length) {
+      throw ArgumentError('Selected task IDs must not contain duplicates.');
+    }
+  }
+
+  String _placeholders(int count) => List.filled(count, '?').join(', ');
 }
