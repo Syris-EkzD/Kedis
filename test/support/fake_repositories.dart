@@ -39,6 +39,7 @@ class FakeTaskRepository implements TaskRepository {
       completedAt: null,
       categoryId: resolvedCategoryId,
       deletedAt: null,
+      deletedGroupCategoryId: null,
     );
     _store.tasks[task.id] = task;
     return task;
@@ -266,6 +267,7 @@ class FakeCategoryRepository implements CategoryRepository {
       colorValue: colorValue,
       isSystem: false,
       createdAt: _now(),
+      deletedAt: null,
     );
     _store.categories[category.id] = category;
     return category;
@@ -365,6 +367,7 @@ class _FakeRepositoryStore {
         colorValue: 0xFF426A5A,
         isSystem: true,
         createdAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+        deletedAt: null,
       ) {
     categories[inbox.id] = inbox;
   }
@@ -401,6 +404,7 @@ Task _copyTask(
     completedAt: clearCompletedAt ? null : completedAt ?? task.completedAt,
     categoryId: categoryId ?? task.categoryId,
     deletedAt: clearDeletedAt ? null : deletedAt ?? task.deletedAt,
+    deletedGroupCategoryId: task.deletedGroupCategoryId,
   );
 }
 
@@ -415,5 +419,6 @@ TaskCategory _copyCategory(
     colorValue: colorValue ?? category.colorValue,
     isSystem: category.isSystem,
     createdAt: category.createdAt,
+    deletedAt: category.deletedAt,
   );
 }

@@ -5,6 +5,7 @@ class TaskCategory {
     required this.colorValue,
     required this.isSystem,
     required this.createdAt,
+    required this.deletedAt,
   });
 
   final int id;
@@ -12,6 +13,7 @@ class TaskCategory {
   final int colorValue;
   final bool isSystem;
   final DateTime createdAt;
+  final DateTime? deletedAt;
 
   factory TaskCategory.fromMap(Map<String, Object?> map) {
     return TaskCategory(
@@ -23,6 +25,13 @@ class TaskCategory {
         map['created_at']! as int,
         isUtc: true,
       ),
+      deletedAt: switch (map['deleted_at']) {
+        final int timestamp => DateTime.fromMillisecondsSinceEpoch(
+          timestamp,
+          isUtc: true,
+        ),
+        _ => null,
+      },
     );
   }
 }

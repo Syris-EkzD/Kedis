@@ -63,6 +63,7 @@ void main() {
         expect(categories.single['name'], KedisDatabase.inboxName);
         expect(categories.single['system_key'], KedisDatabase.inboxSystemKey);
         expect(categories.single['is_system'], 1);
+        expect(categories.single['deleted_at'], isNull);
 
         final inboxId = categories.single['id']! as int;
         final tasks = await migrated.query(
@@ -77,6 +78,7 @@ void main() {
         expect(tasks[0]['completed_at'], isNull);
         expect(tasks[0]['category_id'], inboxId);
         expect(tasks[0]['deleted_at'], isNull);
+        expect(tasks[0]['deleted_group_category_id'], isNull);
         expect(tasks[1]['id'], 11);
         expect(tasks[1]['title'], 'Legacy completed');
         expect(tasks[1]['is_completed'], 1);
@@ -84,6 +86,7 @@ void main() {
         expect(tasks[1]['completed_at'], 3000);
         expect(tasks[1]['category_id'], inboxId);
         expect(tasks[1]['deleted_at'], isNull);
+        expect(tasks[1]['deleted_group_category_id'], isNull);
 
         await kedisDatabase.close();
       } finally {
@@ -92,7 +95,7 @@ void main() {
     },
   );
 
-  test('migrates schema v3 tasks to v4 without trashing them', () async {
+  test('migrates schema v3 tasks through v5 without trashing them', () async {
     final temporaryDirectory = await Directory.systemTemp.createTemp(
       'kedis_trash_migration_',
     );
@@ -153,7 +156,7 @@ void main() {
       final migrated = await kedisDatabase.database;
       final taskRows = await migrated.query(KedisDatabase.tasksTable);
 
-      expect(await migrated.getVersion(), 4);
+      expect(await migrated.getVersion(), KedisDatabase.databaseVersion);
       expect(taskRows, hasLength(1));
       expect(taskRows.single['id'], 9);
       expect(taskRows.single['title'], 'Existing task');
@@ -162,6 +165,11 @@ void main() {
       expect(taskRows.single['completed_at'], 2000);
       expect(taskRows.single['category_id'], 5);
       expect(taskRows.single['deleted_at'], isNull);
+      expect(taskRows.single['deleted_group_category_id'], isNull);
+
+      final categoryRows = await migrated.query(KedisDatabase.categoriesTable);
+      expect(categoryRows.single['deleted_at'], isNull);
+      expect(await migrated.rawQuery('PRAGMA foreign_key_check'), isEmpty);
 
       await kedisDatabase.close();
     } finally {

@@ -69,6 +69,7 @@ object KedisTaskDatabase {
 
         override fun onCreate(database: SQLiteDatabase) {
             createCategoriesTable(database)
+            createCategoryDeletionGuards(database)
             insertInbox(database)
             createTasksTable(database)
         }
@@ -80,13 +81,133 @@ object KedisTaskDatabase {
             if (oldVersion < 3) {
                 migrateToCategories(database)
             }
-            if (oldVersion >= 3 && oldVersion < 4) {
+            if (oldVersion < 4) {
                 database.execSQL("ALTER TABLE $TASKS_TABLE ADD COLUMN deleted_at INTEGER")
+            }
+            if (oldVersion < 5) {
+                migrateToTrashFoundation(database)
             }
         }
     }
 
     private fun createCategoriesTable(database: SQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE $CATEGORIES_TABLE (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+                color_value INTEGER NOT NULL,
+                is_system INTEGER NOT NULL DEFAULT 0 CHECK(is_system IN (0, 1)),
+                system_key TEXT UNIQUE,
+                created_at INTEGER NOT NULL,
+                deleted_at INTEGER,
+                CHECK(
+                    (is_system = 1 AND system_key IS NOT NULL) OR
+                    (is_system = 0 AND system_key IS NULL)
+                ),
+                CHECK(is_system = 0 OR deleted_at IS NULL)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE UNIQUE INDEX categories_name_nocase_unique
+            ON $CATEGORIES_TABLE(name COLLATE NOCASE)
+            """.trimIndent(),
+        )
+    }
+
+    private fun insertInbox(database: SQLiteDatabase): Long {
+        val values = ContentValues().apply {
+            put("name", INBOX_NAME)
+            put("color_value", INBOX_COLOR_VALUE)
+            put("is_system", 1)
+            put("system_key", INBOX_SYSTEM_KEY)
+            put("created_at", 0L)
+        }
+        return database.insertOrThrow(CATEGORIES_TABLE, null, values)
+    }
+
+    private fun createCategoryDeletionGuards(database: SQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TRIGGER categories_system_deleted_insert_guard
+            BEFORE INSERT ON $CATEGORIES_TABLE
+            WHEN NEW.is_system = 1 AND NEW.deleted_at IS NOT NULL
+            BEGIN
+                SELECT RAISE(ABORT, 'System categories cannot be deleted');
+            END
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TRIGGER categories_system_deleted_update_guard
+            BEFORE UPDATE OF is_system, deleted_at ON $CATEGORIES_TABLE
+            WHEN NEW.is_system = 1 AND NEW.deleted_at IS NOT NULL
+            BEGIN
+                SELECT RAISE(ABORT, 'System categories cannot be deleted');
+            END
+            """.trimIndent(),
+        )
+    }
+
+    private fun createTasksTable(database: SQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE $TASKS_TABLE (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+                is_completed INTEGER NOT NULL DEFAULT 0
+                    CHECK(is_completed IN (0, 1)),
+                created_at INTEGER NOT NULL,
+                completed_at INTEGER,
+                category_id INTEGER
+                    REFERENCES $CATEGORIES_TABLE(id) ON DELETE RESTRICT,
+                deleted_at INTEGER,
+                deleted_group_category_id INTEGER
+                    REFERENCES $CATEGORIES_TABLE(id) ON DELETE RESTRICT,
+                CHECK(deleted_at IS NOT NULL OR category_id IS NOT NULL)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE INDEX tasks_category_id_idx
+            ON $TASKS_TABLE(category_id)
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE INDEX tasks_deleted_group_category_id_idx
+            ON $TASKS_TABLE(deleted_group_category_id)
+            """.trimIndent(),
+        )
+    }
+
+    private fun createVersion3TasksTable(database: SQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE $TASKS_TABLE (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+                is_completed INTEGER NOT NULL DEFAULT 0
+                    CHECK(is_completed IN (0, 1)),
+                created_at INTEGER NOT NULL,
+                completed_at INTEGER,
+                category_id INTEGER NOT NULL
+                    REFERENCES $CATEGORIES_TABLE(id) ON DELETE RESTRICT
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE INDEX tasks_category_id_idx
+            ON $TASKS_TABLE(category_id)
+            """.trimIndent(),
+        )
+    }
+
+    private fun createVersion3CategoriesTable(database: SQLiteDatabase) {
         database.execSQL(
             """
             CREATE TABLE $CATEGORIES_TABLE (
@@ -111,46 +232,11 @@ object KedisTaskDatabase {
         )
     }
 
-    private fun insertInbox(database: SQLiteDatabase): Long {
-        val values = ContentValues().apply {
-            put("name", INBOX_NAME)
-            put("color_value", INBOX_COLOR_VALUE)
-            put("is_system", 1)
-            put("system_key", INBOX_SYSTEM_KEY)
-            put("created_at", 0L)
-        }
-        return database.insertOrThrow(CATEGORIES_TABLE, null, values)
-    }
-
-    private fun createTasksTable(database: SQLiteDatabase) {
-        database.execSQL(
-            """
-            CREATE TABLE $TASKS_TABLE (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL CHECK(length(trim(title)) > 0),
-                is_completed INTEGER NOT NULL DEFAULT 0
-                    CHECK(is_completed IN (0, 1)),
-                created_at INTEGER NOT NULL,
-                completed_at INTEGER,
-                category_id INTEGER NOT NULL
-                    REFERENCES $CATEGORIES_TABLE(id) ON DELETE RESTRICT,
-                deleted_at INTEGER
-            )
-            """.trimIndent(),
-        )
-        database.execSQL(
-            """
-            CREATE INDEX tasks_category_id_idx
-            ON $TASKS_TABLE(category_id)
-            """.trimIndent(),
-        )
-    }
-
     private fun migrateToCategories(database: SQLiteDatabase) {
-        createCategoriesTable(database)
+        createVersion3CategoriesTable(database)
         val inboxId = insertInbox(database)
         database.execSQL("ALTER TABLE $TASKS_TABLE RENAME TO tasks_v2")
-        createTasksTable(database)
+        createVersion3TasksTable(database)
         database.execSQL(
             """
             INSERT INTO $TASKS_TABLE (
@@ -175,9 +261,42 @@ object KedisTaskDatabase {
         database.execSQL("DROP TABLE tasks_v2")
     }
 
+    private fun migrateToTrashFoundation(database: SQLiteDatabase) {
+        database.execSQL("ALTER TABLE $CATEGORIES_TABLE ADD COLUMN deleted_at INTEGER")
+        createCategoryDeletionGuards(database)
+        database.execSQL("DROP INDEX IF EXISTS tasks_category_id_idx")
+        database.execSQL("ALTER TABLE $TASKS_TABLE RENAME TO tasks_v4")
+        createTasksTable(database)
+        database.execSQL(
+            """
+            INSERT INTO $TASKS_TABLE (
+                id,
+                title,
+                is_completed,
+                created_at,
+                completed_at,
+                category_id,
+                deleted_at,
+                deleted_group_category_id
+            )
+            SELECT
+                id,
+                title,
+                is_completed,
+                created_at,
+                completed_at,
+                category_id,
+                deleted_at,
+                NULL
+            FROM tasks_v4
+            """.trimIndent(),
+        )
+        database.execSQL("DROP TABLE tasks_v4")
+    }
+
     // Public product identity changed, but the authoritative database filename did not.
     private const val DATABASE_NAME = "dewwit.db"
-    private const val DATABASE_VERSION = 4
+    private const val DATABASE_VERSION = 5
     private const val TASKS_TABLE = "tasks"
     private const val CATEGORIES_TABLE = "categories"
     private const val INBOX_SYSTEM_KEY = "inbox"

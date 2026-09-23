@@ -44,6 +44,7 @@ class TaskRepository {
       'completed_at': null,
       'category_id': resolvedCategoryId,
       'deleted_at': null,
+      'deleted_group_category_id': null,
     });
 
     return Task(
@@ -54,6 +55,7 @@ class TaskRepository {
       completedAt: null,
       categoryId: resolvedCategoryId,
       deletedAt: null,
+      deletedGroupCategoryId: null,
     );
   }
 
