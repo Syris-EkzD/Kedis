@@ -64,15 +64,17 @@ Task
 ├── isCompleted: bool
 ├── createdAt: DateTime
 ├── completedAt: DateTime?
-├── categoryId: int
-└── deletedAt: DateTime?
+├── categoryId: int?
+├── deletedAt: DateTime?
+└── deletedGroupCategoryId: int?
 
 TaskCategory
 ├── id: int
 ├── name: String
 ├── colorValue: int
 ├── isSystem: bool
-└── createdAt: DateTime
+├── createdAt: DateTime
+└── deletedAt: DateTime?
 ```
 
 Category colors are stored as stable integer ARGB values. Flutter `Color` objects are not serialized into SQLite.
@@ -91,7 +93,7 @@ The compatibility database filename remains:
 dewwit.db
 ```
 
-Current schema version: **4**.
+Current schema version: **5**.
 
 ```text
 categories
@@ -100,7 +102,8 @@ categories
 ├── color_value INTEGER NOT NULL
 ├── is_system INTEGER NOT NULL
 ├── system_key TEXT UNIQUE NULL
-└── created_at INTEGER NOT NULL
+├── created_at INTEGER NOT NULL
+└── deleted_at INTEGER NULL
 
 tasks
 ├── id INTEGER PRIMARY KEY AUTOINCREMENT
@@ -108,12 +111,16 @@ tasks
 ├── is_completed INTEGER NOT NULL
 ├── created_at INTEGER NOT NULL
 ├── completed_at INTEGER NULL
-├── category_id INTEGER NOT NULL
+├── category_id INTEGER NULL
 │   REFERENCES categories(id) ON DELETE RESTRICT
-└── deleted_at INTEGER NULL
+├── deleted_at INTEGER NULL
+└── deleted_group_category_id INTEGER NULL
+    REFERENCES categories(id) ON DELETE RESTRICT
 ```
 
-A case-insensitive unique index prevents duplicate category names. A category index supports task filtering by `category_id`.
+A case-insensitive unique index prevents duplicate category names across active and deleted categories. Task indexes support filtering by `category_id` and `deleted_group_category_id`.
+
+Schema v5 establishes persistence for future recoverable category deletion without activating that user-facing behavior. Active categories have `deleted_at = NULL`. Deleted tasks may have a nullable `category_id`, and `deleted_group_category_id` independently records association with a deleted category group. Current task and category deletion behavior remains unchanged and does not populate grouped associations.
 
 Foreign keys are enabled when the database opens.
 
@@ -142,11 +149,15 @@ Version 1 databases still receive the existing `completed_at` migration before t
 
 Schema v4 adds nullable `tasks.deleted_at`. Existing v3 rows migrate in place with `deleted_at = NULL`, preserving task IDs, titles, completion state, creation/completion timestamps, and category assignments. Fresh databases create the v4 task table directly.
 
+## Version 4 to version 5 migration
+
+Schema v5 adds nullable `categories.deleted_at`, rebuilds `tasks` so `category_id` is nullable, and adds nullable `tasks.deleted_group_category_id`. The migration preserves every category and task row, keeps existing task category assignments and deletion timestamps, and initializes both new fields to `NULL`. The rebuilt task table retains restrictive foreign keys and does not cascade task deletion.
+
 ---
 
 # Category repositories and behavior
 
-`CategoryRepository` handles:
+`CategoryRepository` handles active categories and keeps deleted category rows out of existing Home and task-capture flows. It handles:
 
 - Inbox lookup.
 - Category ordering.
@@ -202,7 +213,7 @@ The native Android widget cannot consume Flutter `ThemeData` directly. Kedis mir
 
 The native widget uses `AppWidgetProvider`, `RemoteViewsService`, and `RemoteViews`.
 
-Its SQLiteOpenHelper matches schema version 4 so either Flutter or the widget can open/create/upgrade the shared database safely.
+Its SQLiteOpenHelper matches schema version 5 so either Flutter or the widget can open/create/upgrade the shared database safely.
 
 The widget remains intentionally category-agnostic:
 
