@@ -553,9 +553,7 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
         .where((task) => !task.isCompleted)
         .toList(growable: false);
     final previewLimit = isGridLayout ? _gridPreviewLimit : _listPreviewLimit;
-    final previewTasks = activeTasks
-        .take(previewLimit)
-        .toList(growable: false);
+    final previewTasks = activeTasks.take(previewLimit).toList(growable: false);
 
     return CategoryCard(
       key: ValueKey('category-card-${category.id}'),

@@ -243,9 +243,7 @@ void main() {
       ValueKey('category-card-${programming.id}'),
     );
     final wrappedCard = find.byKey(ValueKey('category-card-${wrapped.id}'));
-    final excessiveCard = find.byKey(
-      ValueKey('category-card-${excessive.id}'),
-    );
+    final excessiveCard = find.byKey(ValueKey('category-card-${excessive.id}'));
 
     for (final card in [
       inboxCard,
@@ -286,10 +284,7 @@ void main() {
       find.descendant(of: wrappedCard, matching: find.text(wrapped.name)),
     );
     final excessiveTitle = tester.widget<Text>(
-      find.descendant(
-        of: excessiveCard,
-        matching: find.text(excessive.name),
-      ),
+      find.descendant(of: excessiveCard, matching: find.text(excessive.name)),
     );
 
     expect(programmingTitle.maxLines, CategoryCard.gridTitleMaxLines);
@@ -369,10 +364,7 @@ void main() {
     final inboxCard = find.byKey(ValueKey('category-card-${inbox.id}'));
     final schoolCard = find.byKey(ValueKey('category-card-${school.id}'));
 
-    expect(
-      tester.getTopLeft(inboxCard).dx,
-      tester.getTopLeft(schoolCard).dx,
-    );
+    expect(tester.getTopLeft(inboxCard).dx, tester.getTopLeft(schoolCard).dx);
     expect(
       tester.getTopLeft(schoolCard).dy,
       greaterThan(tester.getTopLeft(inboxCard).dy),
@@ -534,9 +526,7 @@ void main() {
     await openHomeTaskCapture(tester);
 
     const layoutTolerance = 1.0;
-    final dialogContent = find.byKey(
-      const ValueKey('quick-capture-content'),
-    );
+    final dialogContent = find.byKey(const ValueKey('quick-capture-content'));
     final titleField = find.byKey(const ValueKey('quick-capture-title'));
     final categorySelector = find.byKey(
       const ValueKey('quick-capture-category'),
@@ -586,10 +576,7 @@ void main() {
       tester.getSize(titleField).width,
       closeTo(initialFieldWidth, layoutTolerance),
     );
-    expect(
-      tester.getSize(titleField).height,
-      greaterThan(initialFieldHeight),
-    );
+    expect(tester.getSize(titleField).height, greaterThan(initialFieldHeight));
 
     final editableText = tester.widget<EditableText>(
       find.descendant(of: titleField, matching: find.byType(EditableText)),
@@ -642,10 +629,7 @@ void main() {
       tester.getBottomRight(categorySelector).dy,
       lessThan(800 - keyboardHeight),
     );
-    expect(
-      tester.getBottomRight(addAction).dy,
-      lessThan(800 - keyboardHeight),
-    );
+    expect(tester.getBottomRight(addAction).dy, lessThan(800 - keyboardHeight));
     expect(tester.takeException(), isNull);
 
     await tester.tap(cancelAction.hitTestable());
@@ -712,18 +696,15 @@ void main() {
       tester.getBottomRight(categorySelector).dy,
       lessThan(800 - keyboardHeight),
     );
-    expect(
-      tester.getBottomRight(addAction).dy,
-      lessThan(800 - keyboardHeight),
-    );
+    expect(tester.getBottomRight(addAction).dy, lessThan(800 - keyboardHeight));
     expect(tester.takeException(), isNull);
 
     await tester.tap(categorySelector.hitTestable());
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(
-        ValueKey('quick-capture-category-option-${school.id}'),
-      ).hitTestable(),
+      find
+          .byKey(ValueKey('quick-capture-category-option-${school.id}'))
+          .hitTestable(),
     );
     await pumpUntil(tester, () {
       final selectedCategory = find.byKey(
