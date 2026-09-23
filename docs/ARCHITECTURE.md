@@ -120,7 +120,7 @@ tasks
 
 A case-insensitive unique index prevents duplicate category names across active and deleted categories. Task indexes support filtering by `category_id` and `deleted_group_category_id`.
 
-Schema v5 establishes persistence for future recoverable category deletion without activating that user-facing behavior. Active categories have `deleted_at = NULL`. Deleted tasks may have a nullable `category_id`, and `deleted_group_category_id` independently records association with a deleted category group. Current task and category deletion behavior remains unchanged and does not populate grouped associations.
+Schema v5 supports recoverable category deletion. Active categories have `deleted_at = NULL`. Deleted tasks may have a nullable `category_id`, and `deleted_group_category_id` independently records association with a deleted category group.
 
 Foreign keys are enabled when the database opens.
 
@@ -157,22 +157,34 @@ Schema v5 adds nullable `categories.deleted_at`, rebuilds `tasks` so `category_i
 
 # Category repositories and behavior
 
-`CategoryRepository` handles active categories and keeps deleted category rows out of existing Home and task-capture flows. It handles:
+`CategoryRepository` keeps deleted category rows out of existing Home and task-capture flows. In addition to active category CRUD, its repository API supports:
 
 - Inbox lookup.
 - Category ordering.
 - Trimmed/validated category creation.
 - Case-insensitive duplicate-name prevention.
 - Custom-category rename and color updates.
-- Safe category deletion.
+- Listing deleted custom categories.
+- Soft-deleting an empty category.
+- Moving active tasks to an explicit active destination before soft-deleting their source category.
+- Soft-deleting a category and grouping its currently active tasks.
+- Selectively restoring or permanently deleting grouped tasks while detaching unselected tasks as standalone Trash entries.
 
 Inbox is ordered first. User categories follow creation order with ID as a deterministic fallback.
 
-Deleting a custom category runs in a database transaction: all matching tasks, including soft-deleted rows in Trash, are reassigned to Inbox before the category row is deleted. Inbox itself cannot be renamed, recolored, or deleted.
+All multi-row category operations run in SQLite transactions. Deleted category names remain reserved until permanent deletion. Inbox itself cannot be renamed, recolored, or deleted.
 
-`TaskRepository` handles task assignment by persistent category ID. Creating a task without a category resolves the current Inbox through its durable system key. Moving a task updates only `category_id`.
+The existing UI-facing category deletion method remains temporarily available: it moves normal and trashed tasks to Inbox before physically deleting the custom category. Current screens continue using that compatibility path until the replacement dialogs are implemented.
 
-Ordinary task reads and mutations exclude rows with non-null `deleted_at`. Soft deletion stamps `deleted_at`; restore clears it on the same row; permanent deletion physically removes only an already-trashed row. Trash reads return deleted rows newest-deleted first. Completion state, creation/completion timestamps, and category assignment remain intact while a task is trashed.
+`TaskRepository` handles task assignment by persistent category ID. Creating a task without a category resolves the current Inbox through its durable system key. Explicit category destinations for creation, movement, and restoration must exist and be active.
+
+Ordinary task reads and mutations exclude rows with non-null `deleted_at`. The repository exposes separate queries for grouped deleted tasks and standalone deleted tasks while retaining the existing broad Trash query for UI compatibility. Individual restoration preserves a retained active category; categoryless or grouped tasks require an explicit active destination. Permanent task deletion removes only the selected deleted row.
+
+## Trash repository readiness
+
+The data layer is ready for selective category-group restore and permanent deletion. Selecting a category does not imply selection of its grouped tasks: unselected grouped tasks remain deleted, become categoryless, and move to the standalone deleted-task collection.
+
+The grouped Trash interface and replacement category-deletion dialogs are not implemented yet. Existing screens continue using their current user-facing deletion and Trash flows until the subsequent UI milestone connects these repository operations.
 
 ---
 

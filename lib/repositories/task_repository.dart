@@ -35,28 +35,31 @@ class TaskRepository {
       isUtc: true,
     );
     final database = await _database.database;
-    final resolvedCategoryId =
-        categoryId ?? await KedisDatabase.getInboxId(database);
-    final id = await database.insert(KedisDatabase.tasksTable, {
-      'title': normalizedTitle,
-      'is_completed': 0,
-      'created_at': createdAt.millisecondsSinceEpoch,
-      'completed_at': null,
-      'category_id': resolvedCategoryId,
-      'deleted_at': null,
-      'deleted_group_category_id': null,
-    });
+    return database.transaction((transaction) async {
+      final resolvedCategoryId =
+          categoryId ?? await KedisDatabase.getInboxId(transaction);
+      await _requireActiveCategory(transaction, resolvedCategoryId);
+      final id = await transaction.insert(KedisDatabase.tasksTable, {
+        'title': normalizedTitle,
+        'is_completed': 0,
+        'created_at': createdAt.millisecondsSinceEpoch,
+        'completed_at': null,
+        'category_id': resolvedCategoryId,
+        'deleted_at': null,
+        'deleted_group_category_id': null,
+      });
 
-    return Task(
-      id: id,
-      title: normalizedTitle,
-      isCompleted: false,
-      createdAt: createdAt,
-      completedAt: null,
-      categoryId: resolvedCategoryId,
-      deletedAt: null,
-      deletedGroupCategoryId: null,
-    );
+      return Task(
+        id: id,
+        title: normalizedTitle,
+        isCompleted: false,
+        createdAt: createdAt,
+        completedAt: null,
+        categoryId: resolvedCategoryId,
+        deletedAt: null,
+        deletedGroupCategoryId: null,
+      );
+    });
   }
 
   Future<List<Task>> getTasks({int? categoryId}) async {
@@ -96,6 +99,27 @@ class TaskRepository {
     return rows.map(Task.fromMap).toList(growable: false);
   }
 
+  Future<List<Task>> getStandaloneDeletedTasks() async {
+    final database = await _database.database;
+    final rows = await database.query(
+      KedisDatabase.tasksTable,
+      where: 'deleted_at IS NOT NULL AND deleted_group_category_id IS NULL',
+      orderBy: 'deleted_at DESC, id DESC',
+    );
+    return rows.map(Task.fromMap).toList(growable: false);
+  }
+
+  Future<List<Task>> getDeletedTasksForCategoryGroup(int categoryId) async {
+    final database = await _database.database;
+    final rows = await database.query(
+      KedisDatabase.tasksTable,
+      where: 'deleted_group_category_id = ?',
+      whereArgs: [categoryId],
+      orderBy: 'deleted_at DESC, id DESC',
+    );
+    return rows.map(Task.fromMap).toList(growable: false);
+  }
+
   Future<Task?> updateTaskTitle(int id, String title) async {
     final normalizedTitle = title.trim();
     if (normalizedTitle.isEmpty) {
@@ -118,16 +142,19 @@ class TaskRepository {
 
   Future<Task?> moveTaskToCategory(int id, int categoryId) async {
     final database = await _database.database;
-    final updatedRows = await database.update(
-      KedisDatabase.tasksTable,
-      {'category_id': categoryId},
-      where: 'id = ? AND deleted_at IS NULL',
-      whereArgs: [id],
-    );
-    if (updatedRows == 0) {
-      return null;
-    }
-    return _getTask(database, id);
+    return database.transaction((transaction) async {
+      await _requireActiveCategory(transaction, categoryId);
+      final updatedRows = await transaction.update(
+        KedisDatabase.tasksTable,
+        {'category_id': categoryId},
+        where: 'id = ? AND deleted_at IS NULL',
+        whereArgs: [id],
+      );
+      if (updatedRows == 0) {
+        return null;
+      }
+      return _getTask(transaction, id);
+    });
   }
 
   Future<Task?> toggleTask(int id) async {
@@ -193,18 +220,51 @@ class TaskRepository {
     return updatedRows > 0;
   }
 
-  Future<Task?> restoreTask(int id) async {
+  Future<Task?> restoreTask(int id, {int? destinationCategoryId}) async {
     final database = await _database.database;
-    final updatedRows = await database.update(
-      KedisDatabase.tasksTable,
-      {'deleted_at': null},
-      where: 'id = ? AND deleted_at IS NOT NULL',
-      whereArgs: [id],
-    );
-    if (updatedRows == 0) {
-      return null;
-    }
-    return _getTask(database, id);
+    return database.transaction((transaction) async {
+      final rows = await transaction.query(
+        KedisDatabase.tasksTable,
+        where: 'id = ? AND deleted_at IS NOT NULL',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+
+      final task = Task.fromMap(rows.single);
+      int restoredCategoryId;
+      if (task.deletedGroupCategoryId == null && task.categoryId != null) {
+        final retainedCategoryIsActive = await _isActiveCategory(
+          transaction,
+          task.categoryId!,
+        );
+        if (retainedCategoryIsActive) {
+          restoredCategoryId = task.categoryId!;
+        } else {
+          restoredCategoryId = await _requireExplicitDestination(
+            transaction,
+            destinationCategoryId,
+          );
+        }
+      } else {
+        restoredCategoryId = await _requireExplicitDestination(
+          transaction,
+          destinationCategoryId,
+        );
+      }
+
+      await transaction.update(
+        KedisDatabase.tasksTable,
+        {
+          'category_id': restoredCategoryId,
+          'deleted_at': null,
+          'deleted_group_category_id': null,
+        },
+        where: 'id = ? AND deleted_at IS NOT NULL',
+        whereArgs: [id],
+      );
+      return _getTask(transaction, id);
+    });
   }
 
   Future<bool> permanentlyDeleteTask(int id) async {
@@ -234,5 +294,39 @@ class TaskRepository {
       return null;
     }
     return Task.fromMap(rows.single);
+  }
+
+  Future<bool> _isActiveCategory(
+    DatabaseExecutor database,
+    int categoryId,
+  ) async {
+    final rows = await database.query(
+      KedisDatabase.categoriesTable,
+      columns: ['id'],
+      where: 'id = ? AND deleted_at IS NULL',
+      whereArgs: [categoryId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  Future<void> _requireActiveCategory(
+    DatabaseExecutor database,
+    int categoryId,
+  ) async {
+    if (!await _isActiveCategory(database, categoryId)) {
+      throw StateError('Active category $categoryId does not exist.');
+    }
+  }
+
+  Future<int> _requireExplicitDestination(
+    DatabaseExecutor database,
+    int? destinationCategoryId,
+  ) async {
+    if (destinationCategoryId == null) {
+      throw ArgumentError.notNull('destinationCategoryId');
+    }
+    await _requireActiveCategory(database, destinationCategoryId);
+    return destinationCategoryId;
   }
 }

@@ -26,6 +26,16 @@ class CategoryRepository {
     return rows.map(TaskCategory.fromMap).toList(growable: false);
   }
 
+  Future<List<TaskCategory>> getDeletedCategories() async {
+    final database = await _database.database;
+    final rows = await database.query(
+      KedisDatabase.categoriesTable,
+      where: 'is_system = 0 AND deleted_at IS NOT NULL',
+      orderBy: 'deleted_at DESC, id DESC',
+    );
+    return rows.map(TaskCategory.fromMap).toList(growable: false);
+  }
+
   Future<TaskCategory> getInbox() async {
     final database = await _database.database;
     final rows = await database.query(
@@ -74,7 +84,7 @@ class CategoryRepository {
     final database = await _database.database;
     final current = await _getCategory(database, id);
     if (current == null) return null;
-    _ensureCustomCategory(current);
+    _ensureActiveCustomCategory(current);
     await _ensureNameAvailable(database, normalizedName, excludingId: id);
 
     await database.update(
@@ -91,12 +101,12 @@ class CategoryRepository {
     final database = await _database.database;
     final current = await _getCategory(database, id);
     if (current == null) return null;
-    _ensureCustomCategory(current);
+    _ensureActiveCustomCategory(current);
 
     await database.update(
       KedisDatabase.categoriesTable,
       {'color_value': colorValue},
-      where: 'id = ?',
+      where: 'id = ? AND deleted_at IS NULL',
       whereArgs: [id],
     );
     return _getCategory(database, id);
@@ -107,7 +117,7 @@ class CategoryRepository {
     return database.transaction((transaction) async {
       final current = await _getCategory(transaction, id);
       if (current == null) return null;
-      _ensureCustomCategory(current);
+      _ensureActiveCustomCategory(current);
 
       final inboxId = await KedisDatabase.getInboxId(transaction);
       final movedTasks = await transaction.update(
@@ -122,6 +132,197 @@ class CategoryRepository {
         whereArgs: [id],
       );
       return movedTasks;
+    });
+  }
+
+  Future<CategoryDeletionResult> softDeleteEmptyCategory(int id) async {
+    final database = await _database.database;
+    return database.transaction((transaction) async {
+      await _requireActiveCustomCategory(transaction, id);
+      final activeTaskCount = Sqflite.firstIntValue(
+        await transaction.rawQuery(
+          '''
+          SELECT COUNT(*)
+          FROM ${KedisDatabase.tasksTable}
+          WHERE category_id = ? AND deleted_at IS NULL
+          ''',
+          [id],
+        ),
+      )!;
+      if (activeTaskCount != 0) {
+        throw StateError('Category $id still has active tasks.');
+      }
+
+      final deletedAt = DateTime.now().millisecondsSinceEpoch;
+      final detachedTaskCount = await _detachStandaloneTasks(transaction, id);
+      await transaction.update(
+        KedisDatabase.categoriesTable,
+        {'deleted_at': deletedAt},
+        where: 'id = ? AND deleted_at IS NULL',
+        whereArgs: [id],
+      );
+      return CategoryDeletionResult(
+        categoryId: id,
+        movedTaskCount: 0,
+        deletedTaskCount: 0,
+        detachedTaskCount: detachedTaskCount,
+        deletedAt: DateTime.fromMillisecondsSinceEpoch(deletedAt, isUtc: true),
+      );
+    });
+  }
+
+  Future<CategoryDeletionResult> softDeleteCategoryMovingTasks(
+    int sourceCategoryId,
+    int destinationCategoryId,
+  ) async {
+    if (sourceCategoryId == destinationCategoryId) {
+      throw ArgumentError('Source and destination categories must differ.');
+    }
+
+    final database = await _database.database;
+    return database.transaction((transaction) async {
+      await _requireActiveCustomCategory(transaction, sourceCategoryId);
+      await _requireActiveCategory(transaction, destinationCategoryId);
+      final movedTaskCount = await transaction.update(
+        KedisDatabase.tasksTable,
+        {'category_id': destinationCategoryId},
+        where: 'category_id = ? AND deleted_at IS NULL',
+        whereArgs: [sourceCategoryId],
+      );
+      final detachedTaskCount = await _detachStandaloneTasks(
+        transaction,
+        sourceCategoryId,
+      );
+      final deletedAt = DateTime.now().millisecondsSinceEpoch;
+      await transaction.update(
+        KedisDatabase.categoriesTable,
+        {'deleted_at': deletedAt},
+        where: 'id = ? AND deleted_at IS NULL',
+        whereArgs: [sourceCategoryId],
+      );
+      return CategoryDeletionResult(
+        categoryId: sourceCategoryId,
+        movedTaskCount: movedTaskCount,
+        deletedTaskCount: 0,
+        detachedTaskCount: detachedTaskCount,
+        deletedAt: DateTime.fromMillisecondsSinceEpoch(deletedAt, isUtc: true),
+      );
+    });
+  }
+
+  Future<CategoryDeletionResult> softDeleteCategoryWithTasks(int id) async {
+    final database = await _database.database;
+    return database.transaction((transaction) async {
+      await _requireActiveCustomCategory(transaction, id);
+      final deletedAt = DateTime.now().millisecondsSinceEpoch;
+      await transaction.update(
+        KedisDatabase.categoriesTable,
+        {'deleted_at': deletedAt},
+        where: 'id = ? AND deleted_at IS NULL',
+        whereArgs: [id],
+      );
+      final deletedTaskCount = await transaction.update(
+        KedisDatabase.tasksTable,
+        {
+          'category_id': null,
+          'deleted_at': deletedAt,
+          'deleted_group_category_id': id,
+        },
+        where: 'category_id = ? AND deleted_at IS NULL',
+        whereArgs: [id],
+      );
+      final detachedTaskCount = await _detachStandaloneTasks(transaction, id);
+      return CategoryDeletionResult(
+        categoryId: id,
+        movedTaskCount: 0,
+        deletedTaskCount: deletedTaskCount,
+        detachedTaskCount: detachedTaskCount,
+        deletedAt: DateTime.fromMillisecondsSinceEpoch(deletedAt, isUtc: true),
+      );
+    });
+  }
+
+  Future<CategorySelectionResult> restoreDeletedCategory(
+    int categoryId,
+    Iterable<int> selectedTaskIds,
+  ) async {
+    final selectedIds = selectedTaskIds.toList(growable: false);
+    final database = await _database.database;
+    return database.transaction((transaction) async {
+      await _requireDeletedCustomCategory(transaction, categoryId);
+      await _validateGroupedTaskSelection(transaction, categoryId, selectedIds);
+
+      await transaction.update(
+        KedisDatabase.categoriesTable,
+        {'deleted_at': null},
+        where: 'id = ? AND deleted_at IS NOT NULL',
+        whereArgs: [categoryId],
+      );
+      final detachedTaskCount = await transaction.update(
+        KedisDatabase.tasksTable,
+        {'category_id': null, 'deleted_group_category_id': null},
+        where: 'deleted_group_category_id = ?',
+        whereArgs: [categoryId],
+      );
+      if (selectedIds.isNotEmpty) {
+        await transaction.update(
+          KedisDatabase.tasksTable,
+          {
+            'category_id': categoryId,
+            'deleted_at': null,
+            'deleted_group_category_id': null,
+          },
+          where: 'id IN (${_placeholders(selectedIds.length)})',
+          whereArgs: selectedIds,
+        );
+      }
+      return CategorySelectionResult(
+        categoryId: categoryId,
+        selectedTaskCount: selectedIds.length,
+        detachedTaskCount: detachedTaskCount - selectedIds.length,
+      );
+    });
+  }
+
+  Future<CategorySelectionResult> permanentlyDeleteCategory(
+    int categoryId,
+    Iterable<int> selectedTaskIds,
+  ) async {
+    final selectedIds = selectedTaskIds.toList(growable: false);
+    final database = await _database.database;
+    return database.transaction((transaction) async {
+      await _requireDeletedCustomCategory(transaction, categoryId);
+      await _validateGroupedTaskSelection(transaction, categoryId, selectedIds);
+
+      if (selectedIds.isNotEmpty) {
+        await transaction.delete(
+          KedisDatabase.tasksTable,
+          where: 'id IN (${_placeholders(selectedIds.length)})',
+          whereArgs: selectedIds,
+        );
+      }
+      final detachedTaskCount = await transaction.update(
+        KedisDatabase.tasksTable,
+        {'category_id': null, 'deleted_group_category_id': null},
+        where: 'deleted_group_category_id = ?',
+        whereArgs: [categoryId],
+      );
+      await transaction.update(
+        KedisDatabase.tasksTable,
+        {'category_id': null},
+        where: 'category_id = ? AND deleted_at IS NOT NULL',
+        whereArgs: [categoryId],
+      );
+      await transaction.delete(
+        KedisDatabase.categoriesTable,
+        where: 'id = ? AND deleted_at IS NOT NULL',
+        whereArgs: [categoryId],
+      );
+      return CategorySelectionResult(
+        categoryId: categoryId,
+        selectedTaskCount: selectedIds.length,
+        detachedTaskCount: detachedTaskCount,
+      );
     });
   }
 
@@ -141,6 +342,84 @@ class CategoryRepository {
     if (rows.isEmpty) return null;
     return TaskCategory.fromMap(rows.single);
   }
+
+  Future<TaskCategory> _requireActiveCategory(
+    DatabaseExecutor database,
+    int id,
+  ) async {
+    final category = await _getCategory(database, id);
+    if (category == null || category.deletedAt != null) {
+      throw StateError('Active category $id does not exist.');
+    }
+    return category;
+  }
+
+  Future<TaskCategory> _requireActiveCustomCategory(
+    DatabaseExecutor database,
+    int id,
+  ) async {
+    final category = await _requireActiveCategory(database, id);
+    _ensureCustomCategory(category);
+    return category;
+  }
+
+  Future<TaskCategory> _requireDeletedCustomCategory(
+    DatabaseExecutor database,
+    int id,
+  ) async {
+    final category = await _getCategory(database, id);
+    if (category == null || category.deletedAt == null) {
+      throw StateError('Deleted category $id does not exist.');
+    }
+    _ensureCustomCategory(category);
+    return category;
+  }
+
+  Future<int> _detachStandaloneTasks(
+    DatabaseExecutor database,
+    int categoryId,
+  ) {
+    return database.update(
+      KedisDatabase.tasksTable,
+      {'category_id': null},
+      where: '''
+        category_id = ?
+        AND deleted_at IS NOT NULL
+        AND deleted_group_category_id IS NULL
+      ''',
+      whereArgs: [categoryId],
+    );
+  }
+
+  Future<void> _validateGroupedTaskSelection(
+    DatabaseExecutor database,
+    int categoryId,
+    List<int> selectedIds,
+  ) async {
+    if (selectedIds.toSet().length != selectedIds.length) {
+      throw ArgumentError('Selected task IDs must not contain duplicates.');
+    }
+    if (selectedIds.isEmpty) return;
+
+    final rows = await database.query(
+      KedisDatabase.tasksTable,
+      columns: ['id'],
+      where:
+          '''
+        id IN (${_placeholders(selectedIds.length)})
+        AND deleted_at IS NOT NULL
+        AND deleted_group_category_id = ?
+      ''',
+      whereArgs: [...selectedIds, categoryId],
+    );
+    if (rows.length != selectedIds.length) {
+      throw StateError(
+        'Every selected task must belong to deleted category $categoryId.',
+      );
+    }
+  }
+
+  String _placeholders(int count) => List.filled(count, '?').join(', ');
 
   Future<void> _ensureNameAvailable(
     DatabaseExecutor database,
@@ -180,4 +459,39 @@ class CategoryRepository {
       throw StateError('System categories cannot be changed or deleted.');
     }
   }
+
+  void _ensureActiveCustomCategory(TaskCategory category) {
+    _ensureCustomCategory(category);
+    if (category.deletedAt != null) {
+      throw StateError('Deleted categories cannot be changed or deleted.');
+    }
+  }
+}
+
+class CategoryDeletionResult {
+  const CategoryDeletionResult({
+    required this.categoryId,
+    required this.movedTaskCount,
+    required this.deletedTaskCount,
+    required this.detachedTaskCount,
+    required this.deletedAt,
+  });
+
+  final int categoryId;
+  final int movedTaskCount;
+  final int deletedTaskCount;
+  final int detachedTaskCount;
+  final DateTime deletedAt;
+}
+
+class CategorySelectionResult {
+  const CategorySelectionResult({
+    required this.categoryId,
+    required this.selectedTaskCount,
+    required this.detachedTaskCount,
+  });
+
+  final int categoryId;
+  final int selectedTaskCount;
+  final int detachedTaskCount;
 }
