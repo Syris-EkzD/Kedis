@@ -223,6 +223,67 @@ class FakeTaskRepository implements TaskRepository {
   }
 
   @override
+  Future<int> restoreStandaloneTasks(
+    Iterable<int> taskIds, {
+    int? destinationCategoryId,
+  }) async {
+    final ids = taskIds.toList(growable: false);
+    _ensureUniqueSelection(ids);
+    final selected = ids.map((id) => _store.tasks[id]).toList(growable: false);
+    if (selected.any(
+      (task) =>
+          task == null ||
+          task.deletedAt == null ||
+          task.deletedGroupCategoryId != null,
+    )) {
+      throw StateError('Every selected task must be standalone in Trash.');
+    }
+
+    final needsDestination = selected.cast<Task>().any((task) {
+      final category = task.categoryId == null
+          ? null
+          : _store.categories[task.categoryId];
+      return category == null || category.deletedAt != null;
+    });
+    if (needsDestination) {
+      _requireActiveCategory(destinationCategoryId);
+    }
+
+    for (final task in selected.cast<Task>()) {
+      final retained = task.categoryId == null
+          ? null
+          : _store.categories[task.categoryId];
+      _store.tasks[task.id] = _copyTask(
+        task,
+        categoryId: retained != null && retained.deletedAt == null
+            ? task.categoryId
+            : destinationCategoryId,
+        clearDeletedAt: true,
+        clearDeletedGroupCategoryId: true,
+      );
+    }
+    return ids.length;
+  }
+
+  @override
+  Future<int> permanentlyDeleteStandaloneTasks(Iterable<int> taskIds) async {
+    final ids = taskIds.toList(growable: false);
+    _ensureUniqueSelection(ids);
+    if (ids.any((id) {
+      final task = _store.tasks[id];
+      return task == null ||
+          task.deletedAt == null ||
+          task.deletedGroupCategoryId != null;
+    })) {
+      throw StateError('Every selected task must be standalone in Trash.');
+    }
+    for (final id in ids) {
+      _store.tasks.remove(id);
+    }
+    return ids.length;
+  }
+
+  @override
   Future<bool> permanentlyDeleteTask(int id) async {
     final current = _store.tasks[id];
     if (current == null || current.deletedAt == null) {
@@ -234,6 +295,20 @@ class FakeTaskRepository implements TaskRepository {
 
   @override
   Future<void> close() async {}
+
+  void _ensureUniqueSelection(List<int> ids) {
+    if (ids.toSet().length != ids.length) {
+      throw ArgumentError('Selected task IDs must not contain duplicates.');
+    }
+  }
+
+  TaskCategory _requireActiveCategory(int? id) {
+    final category = id == null ? null : _store.categories[id];
+    if (category == null || category.deletedAt != null) {
+      throw StateError('An active destination category is required.');
+    }
+    return category;
+  }
 
   int _compareTasks(Task left, Task right) {
     if (left.isCompleted != right.isCompleted) {
@@ -323,7 +398,7 @@ class FakeCategoryRepository implements CategoryRepository {
     if (current == null) {
       return null;
     }
-    _ensureCustomCategory(current);
+    _requireActiveCustomCategory(id);
 
     final normalizedName = _normalizeName(name);
     _ensureNameAvailable(normalizedName, excludingId: id);
@@ -339,7 +414,7 @@ class FakeCategoryRepository implements CategoryRepository {
     if (current == null) {
       return null;
     }
-    _ensureCustomCategory(current);
+    _requireActiveCustomCategory(id);
 
     final updated = _copyCategory(current, colorValue: colorValue);
     _store.categories[id] = updated;
@@ -352,7 +427,7 @@ class FakeCategoryRepository implements CategoryRepository {
     if (current == null) {
       return null;
     }
-    _ensureCustomCategory(current);
+    _requireActiveCustomCategory(id);
 
     var movedTasks = 0;
     for (final entry in _store.tasks.entries.toList()) {
@@ -368,37 +443,172 @@ class FakeCategoryRepository implements CategoryRepository {
   }
 
   @override
-  Future<CategoryDeletionResult> softDeleteEmptyCategory(int id) {
-    throw UnsupportedError('Not used by current widget tests.');
+  Future<CategoryDeletionResult> softDeleteEmptyCategory(int id) async {
+    final category = _requireActiveCustomCategory(id);
+    if (_store.tasks.values.any(
+      (task) => task.categoryId == id && task.deletedAt == null,
+    )) {
+      throw StateError('Category $id still contains active tasks.');
+    }
+    final deletedAt = _now();
+    var detached = 0;
+    for (final entry in _store.tasks.entries.toList()) {
+      final task = entry.value;
+      if (task.categoryId == id &&
+          task.deletedAt != null &&
+          task.deletedGroupCategoryId == null) {
+        _store.tasks[entry.key] = _copyTask(task, clearCategoryId: true);
+        detached += 1;
+      }
+    }
+    _store.categories[id] = _copyCategory(category, deletedAt: deletedAt);
+    return CategoryDeletionResult(
+      categoryId: id,
+      movedTaskCount: 0,
+      deletedTaskCount: 0,
+      detachedTaskCount: detached,
+      deletedAt: deletedAt,
+    );
   }
 
   @override
   Future<CategoryDeletionResult> softDeleteCategoryMovingTasks(
     int sourceCategoryId,
     int destinationCategoryId,
-  ) {
-    throw UnsupportedError('Not used by current widget tests.');
+  ) async {
+    final source = _requireActiveCustomCategory(sourceCategoryId);
+    if (sourceCategoryId == destinationCategoryId) {
+      throw StateError('Source and destination categories must differ.');
+    }
+    _requireActiveCategory(destinationCategoryId);
+    var moved = 0;
+    var detached = 0;
+    for (final entry in _store.tasks.entries.toList()) {
+      final task = entry.value;
+      if (task.categoryId != sourceCategoryId) continue;
+      if (task.deletedAt == null) {
+        _store.tasks[entry.key] = _copyTask(
+          task,
+          categoryId: destinationCategoryId,
+        );
+        moved += 1;
+      } else if (task.deletedGroupCategoryId == null) {
+        _store.tasks[entry.key] = _copyTask(task, clearCategoryId: true);
+        detached += 1;
+      }
+    }
+    final deletedAt = _now();
+    _store.categories[sourceCategoryId] = _copyCategory(
+      source,
+      deletedAt: deletedAt,
+    );
+    return CategoryDeletionResult(
+      categoryId: sourceCategoryId,
+      movedTaskCount: moved,
+      deletedTaskCount: 0,
+      detachedTaskCount: detached,
+      deletedAt: deletedAt,
+    );
   }
 
   @override
-  Future<CategoryDeletionResult> softDeleteCategoryWithTasks(int id) {
-    throw UnsupportedError('Not used by current widget tests.');
+  Future<CategoryDeletionResult> softDeleteCategoryWithTasks(int id) async {
+    final category = _requireActiveCustomCategory(id);
+    final deletedAt = _now();
+    var deleted = 0;
+    var detached = 0;
+    for (final entry in _store.tasks.entries.toList()) {
+      final task = entry.value;
+      if (task.categoryId != id) continue;
+      if (task.deletedAt == null) {
+        _store.tasks[entry.key] = _copyTask(
+          task,
+          clearCategoryId: true,
+          deletedAt: deletedAt,
+          deletedGroupCategoryId: id,
+        );
+        deleted += 1;
+      } else if (task.deletedGroupCategoryId == null) {
+        _store.tasks[entry.key] = _copyTask(task, clearCategoryId: true);
+        detached += 1;
+      }
+    }
+    _store.categories[id] = _copyCategory(category, deletedAt: deletedAt);
+    return CategoryDeletionResult(
+      categoryId: id,
+      movedTaskCount: 0,
+      deletedTaskCount: deleted,
+      detachedTaskCount: detached,
+      deletedAt: deletedAt,
+    );
   }
 
   @override
   Future<CategorySelectionResult> restoreDeletedCategory(
     int categoryId,
     Iterable<int> selectedTaskIds,
-  ) {
-    throw UnsupportedError('Not used by current widget tests.');
+  ) async {
+    final category = _requireDeletedCustomCategory(categoryId);
+    final selected = _validateGroupedSelection(categoryId, selectedTaskIds);
+    var detached = 0;
+    for (final entry in _store.tasks.entries.toList()) {
+      final task = entry.value;
+      if (task.deletedGroupCategoryId != categoryId) continue;
+      if (selected.contains(task.id)) {
+        _store.tasks[entry.key] = _copyTask(
+          task,
+          categoryId: categoryId,
+          clearDeletedAt: true,
+          clearDeletedGroupCategoryId: true,
+        );
+      } else {
+        _store.tasks[entry.key] = _copyTask(
+          task,
+          clearCategoryId: true,
+          clearDeletedGroupCategoryId: true,
+        );
+        detached += 1;
+      }
+    }
+    _store.categories[categoryId] = _copyCategory(
+      category,
+      clearDeletedAt: true,
+    );
+    return CategorySelectionResult(
+      categoryId: categoryId,
+      selectedTaskCount: selected.length,
+      detachedTaskCount: detached,
+    );
   }
 
   @override
   Future<CategorySelectionResult> permanentlyDeleteCategory(
     int categoryId,
     Iterable<int> selectedTaskIds,
-  ) {
-    throw UnsupportedError('Not used by current widget tests.');
+  ) async {
+    _requireDeletedCustomCategory(categoryId);
+    final selected = _validateGroupedSelection(categoryId, selectedTaskIds);
+    var detached = 0;
+    for (final entry in _store.tasks.entries.toList()) {
+      final task = entry.value;
+      if (task.deletedGroupCategoryId != categoryId) continue;
+      if (selected.contains(task.id)) {
+        _store.tasks.remove(entry.key);
+      } else {
+        _store.tasks[entry.key] = _copyTask(
+          task,
+          clearCategoryId: true,
+          clearDeletedGroupCategoryId: true,
+        );
+        detached += 1;
+      }
+    }
+    _store.categories.remove(categoryId);
+    return CategorySelectionResult(
+      categoryId: categoryId,
+      selectedTaskCount: selected.length,
+      detachedTaskCount: detached,
+    );
   }
 
   @override
@@ -434,6 +644,50 @@ class FakeCategoryRepository implements CategoryRepository {
     if (category.isSystem) {
       throw StateError('System categories cannot be changed or deleted.');
     }
+  }
+
+  TaskCategory _requireActiveCategory(int id) {
+    final category = _store.categories[id];
+    if (category == null || category.deletedAt != null) {
+      throw StateError('Active category $id does not exist.');
+    }
+    return category;
+  }
+
+  TaskCategory _requireActiveCustomCategory(int id) {
+    final category = _requireActiveCategory(id);
+    _ensureCustomCategory(category);
+    return category;
+  }
+
+  TaskCategory _requireDeletedCustomCategory(int id) {
+    final category = _store.categories[id];
+    if (category == null || category.deletedAt == null) {
+      throw StateError('Deleted category $id does not exist.');
+    }
+    _ensureCustomCategory(category);
+    return category;
+  }
+
+  Set<int> _validateGroupedSelection(
+    int categoryId,
+    Iterable<int> selectedTaskIds,
+  ) {
+    final ids = selectedTaskIds.toList(growable: false);
+    if (ids.toSet().length != ids.length) {
+      throw ArgumentError('Selected task IDs must not contain duplicates.');
+    }
+    for (final id in ids) {
+      final task = _store.tasks[id];
+      if (task == null ||
+          task.deletedAt == null ||
+          task.deletedGroupCategoryId != categoryId) {
+        throw StateError(
+          'Every selected task must belong to deleted category $categoryId.',
+        );
+      }
+    }
+    return ids.toSet();
   }
 }
 
@@ -471,6 +725,7 @@ Task _copyTask(
   DateTime? completedAt,
   bool clearCompletedAt = false,
   int? categoryId,
+  bool clearCategoryId = false,
   DateTime? deletedAt,
   bool clearDeletedAt = false,
   int? deletedGroupCategoryId,
@@ -482,7 +737,7 @@ Task _copyTask(
     isCompleted: isCompleted ?? task.isCompleted,
     createdAt: task.createdAt,
     completedAt: clearCompletedAt ? null : completedAt ?? task.completedAt,
-    categoryId: categoryId ?? task.categoryId,
+    categoryId: clearCategoryId ? null : categoryId ?? task.categoryId,
     deletedAt: clearDeletedAt ? null : deletedAt ?? task.deletedAt,
     deletedGroupCategoryId: clearDeletedGroupCategoryId
         ? null
@@ -494,6 +749,8 @@ TaskCategory _copyCategory(
   TaskCategory category, {
   String? name,
   int? colorValue,
+  DateTime? deletedAt,
+  bool clearDeletedAt = false,
 }) {
   return TaskCategory(
     id: category.id,
@@ -501,6 +758,6 @@ TaskCategory _copyCategory(
     colorValue: colorValue ?? category.colorValue,
     isSystem: category.isSystem,
     createdAt: category.createdAt,
-    deletedAt: category.deletedAt,
+    deletedAt: clearDeletedAt ? null : deletedAt ?? category.deletedAt,
   );
 }
