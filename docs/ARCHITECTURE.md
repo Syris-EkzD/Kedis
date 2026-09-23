@@ -172,9 +172,9 @@ The home screen loads categories and all non-deleted tasks once each, then group
 The home screen contains:
 
 - Inbox-first category cards.
-- List by default when no preference is stored, with a persisted Grid alternative controlled from Settings.
+- List by default when no preference is stored, with a persisted masonry Grid alternative controlled from Settings.
 - Active and total non-deleted task counts.
-- Up to three active-task previews per category.
+- Up to three active-task previews per category in List, or two in Grid.
 - Home-level quick capture with Inbox preselected and a simple category selector.
 - Lightweight category create/edit/delete actions.
 
