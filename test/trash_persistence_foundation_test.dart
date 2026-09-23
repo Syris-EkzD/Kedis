@@ -52,6 +52,7 @@ void main() {
         whereArgs: [KedisDatabase.inboxSystemKey],
       )).single;
       expect(inbox['deleted_at'], isNull);
+      await _expectSystemCategoryDeletionRejected(database);
     } finally {
       await kedisDatabase.close();
       await temporaryDirectory.delete(recursive: true);
@@ -162,6 +163,7 @@ void main() {
       );
       try {
         final database = await kedisDatabase.database;
+        await _expectSystemCategoryDeletionRejected(database);
         final categories = await database.query(
           KedisDatabase.categoriesTable,
           orderBy: 'id ASC',
@@ -315,4 +317,23 @@ void main() {
       }
     },
   );
+}
+
+Future<void> _expectSystemCategoryDeletionRejected(Database database) async {
+  await expectLater(
+    database.update(
+      KedisDatabase.categoriesTable,
+      {'deleted_at': 9999},
+      where: 'system_key = ?',
+      whereArgs: [KedisDatabase.inboxSystemKey],
+    ),
+    throwsA(isA<DatabaseException>()),
+  );
+
+  final inbox = (await database.query(
+    KedisDatabase.categoriesTable,
+    where: 'system_key = ?',
+    whereArgs: [KedisDatabase.inboxSystemKey],
+  )).single;
+  expect(inbox['deleted_at'], isNull);
 }

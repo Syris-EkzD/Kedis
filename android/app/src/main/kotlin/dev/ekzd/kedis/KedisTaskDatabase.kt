@@ -69,6 +69,7 @@ object KedisTaskDatabase {
 
         override fun onCreate(database: SQLiteDatabase) {
             createCategoriesTable(database)
+            createCategoryDeletionGuards(database)
             insertInbox(database)
             createTasksTable(database)
         }
@@ -125,6 +126,29 @@ object KedisTaskDatabase {
             put("created_at", 0L)
         }
         return database.insertOrThrow(CATEGORIES_TABLE, null, values)
+    }
+
+    private fun createCategoryDeletionGuards(database: SQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TRIGGER categories_system_deleted_insert_guard
+            BEFORE INSERT ON $CATEGORIES_TABLE
+            WHEN NEW.is_system = 1 AND NEW.deleted_at IS NOT NULL
+            BEGIN
+                SELECT RAISE(ABORT, 'System categories cannot be deleted');
+            END
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TRIGGER categories_system_deleted_update_guard
+            BEFORE UPDATE OF is_system, deleted_at ON $CATEGORIES_TABLE
+            WHEN NEW.is_system = 1 AND NEW.deleted_at IS NOT NULL
+            BEGIN
+                SELECT RAISE(ABORT, 'System categories cannot be deleted');
+            END
+            """.trimIndent(),
+        )
     }
 
     private fun createTasksTable(database: SQLiteDatabase) {
@@ -239,6 +263,7 @@ object KedisTaskDatabase {
 
     private fun migrateToTrashFoundation(database: SQLiteDatabase) {
         database.execSQL("ALTER TABLE $CATEGORIES_TABLE ADD COLUMN deleted_at INTEGER")
+        createCategoryDeletionGuards(database)
         database.execSQL("DROP INDEX IF EXISTS tasks_category_id_idx")
         database.execSQL("ALTER TABLE $TASKS_TABLE RENAME TO tasks_v4")
         createTasksTable(database)

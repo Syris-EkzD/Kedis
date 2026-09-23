@@ -57,6 +57,7 @@ class KedisDatabase {
         },
         onCreate: (database, version) async {
           await _createCategoriesTable(database);
+          await _createCategoryDeletionGuards(database);
           await _insertInbox(database);
           await _createTasksTable(database);
         },
@@ -113,6 +114,27 @@ class KedisDatabase {
       'system_key': inboxSystemKey,
       'created_at': 0,
     });
+  }
+
+  static Future<void> _createCategoryDeletionGuards(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TRIGGER categories_system_deleted_insert_guard
+      BEFORE INSERT ON $categoriesTable
+      WHEN NEW.is_system = 1 AND NEW.deleted_at IS NOT NULL
+      BEGIN
+        SELECT RAISE(ABORT, 'System categories cannot be deleted');
+      END
+    ''');
+    await database.execute('''
+      CREATE TRIGGER categories_system_deleted_update_guard
+      BEFORE UPDATE OF is_system, deleted_at ON $categoriesTable
+      WHEN NEW.is_system = 1 AND NEW.deleted_at IS NOT NULL
+      BEGIN
+        SELECT RAISE(ABORT, 'System categories cannot be deleted');
+      END
+    ''');
   }
 
   static Future<void> _createTasksTable(DatabaseExecutor database) async {
@@ -222,6 +244,7 @@ class KedisDatabase {
     await database.execute(
       'ALTER TABLE $categoriesTable ADD COLUMN deleted_at INTEGER',
     );
+    await _createCategoryDeletionGuards(database);
     await database.execute('DROP INDEX IF EXISTS tasks_category_id_idx');
     await database.execute('ALTER TABLE $tasksTable RENAME TO tasks_v4');
     await _createTasksTable(database);
