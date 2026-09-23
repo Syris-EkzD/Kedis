@@ -71,7 +71,7 @@ Deleting a custom category never deletes its tasks. Kedis first moves every norm
 
 ## Category home
 
-The Kedis home screen primarily displays category cards. Grid is the default layout; Settings can switch to the preserved full-width List layout, and the choice persists across restarts.
+The Kedis home screen primarily displays category cards. List is the default layout when no preference is stored; Settings can switch to the compact Grid layout, and existing saved layout preferences are respected across restarts.
 
 Each card shows:
 

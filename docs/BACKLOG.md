@@ -27,7 +27,7 @@ This file separates working behavior from approved Kedis V1 work and later ideas
 - [x] Migrate existing tasks into Inbox without data loss
 - [x] Create tasks within the current category
 - [x] Home quick capture with Inbox default and selectable destination category
-- [x] Persistent Grid/List home-layout preference with Grid default
+- [x] Persistent Grid/List home-layout preference with List default when no preference is stored
 - [x] Category cards with active and total non-deleted counts
 - [x] Compact active-task previews with a maximum of three entries
 - [x] Move tasks between existing categories

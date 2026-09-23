@@ -172,7 +172,7 @@ The home screen loads categories and all non-deleted tasks once each, then group
 The home screen contains:
 
 - Inbox-first category cards.
-- Grid by default, with a persisted List alternative controlled from Settings.
+- List by default when no preference is stored, with a persisted Grid alternative controlled from Settings.
 - Active and total non-deleted task counts.
 - Up to three active-task previews per category.
 - Home-level quick capture with Inbox preselected and a simple category selector.
@@ -192,7 +192,7 @@ No external state-management or navigation framework is used.
 
 Flutter's `ThemeData`, `ColorScheme`, and `ThemeMode` provide System, Light, and Dark appearance. Category colors are accents rather than full-card fills and use normal Material surfaces for readable light/dark presentation.
 
-`shared_preferences` also stores the home-layout choice. `HomeLayoutController` exposes Grid/List changes to the home screen, with Grid as the default when no preference exists.
+`shared_preferences` also stores the home-layout choice. `HomeLayoutController` exposes Grid/List changes to the home screen, with List as the default when no preference exists; existing saved layout preferences are respected.
 
 The native Android widget cannot consume Flutter `ThemeData` directly. Kedis mirrors only the stable theme mode through the retained `dewwit/widget` platform channel and retained `dewwit_widget_preferences` native preference store.
 

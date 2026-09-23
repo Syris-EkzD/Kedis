@@ -56,7 +56,7 @@ Inbox is a durable system category. Home quick capture starts with Inbox selecte
 
 Deleting a custom category never deletes its tasks. Kedis moves both normal and trashed tasks from that category to Inbox before removing the category.
 
-The home screen defaults to a compact Grid layout and can be switched to the preserved full-width List layout from Settings. The choice persists across restarts. Category cards show active and total non-deleted task counts, up to three active-task previews, and a compact remainder indicator when needed. Completed tasks count toward the total but do not appear in previews; trashed tasks count toward neither value.
+The home screen defaults to the full-width List layout when no preference is stored and can be switched to the compact Grid layout from Settings. Existing saved layout preferences are respected across restarts. Category cards show active and total non-deleted task counts, up to three active-task previews, and a compact remainder indicator when needed. Completed tasks count toward the total but do not appear in previews; trashed tasks count toward neither value.
 
 ## Trash behavior
 
