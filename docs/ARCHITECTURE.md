@@ -184,7 +184,7 @@ Ordinary task reads and mutations exclude rows with non-null `deleted_at`. The r
 
 The grouped Trash interface exposes deleted category groups separately from standalone deleted tasks. Selecting a category does not imply selection of its grouped tasks: selections start empty, and unselected grouped tasks remain deleted, become categoryless, and move to the standalone deleted-task collection when their category is restored or permanently deleted.
 
-Individual grouped or categoryless task restoration requires an explicit active destination. Selected standalone tasks can be restored or permanently deleted in validated transactions. UI mutations reload Trash and request an Android widget refresh.
+Individual grouped or categoryless task restoration requires an explicit active destination. Expanded deleted-category groups support scoped selection and transactional restore-to-destination or permanent deletion for only those selected tasks, without changing the category. Selected standalone tasks can likewise be restored or permanently deleted in validated transactions. UI mutations reload Trash and request an Android widget refresh.
 
 ---
 

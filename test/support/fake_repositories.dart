@@ -284,6 +284,43 @@ class FakeTaskRepository implements TaskRepository {
   }
 
   @override
+  Future<int> restoreGroupedTasks(
+    int deletedCategoryId,
+    Iterable<int> taskIds, {
+    required int destinationCategoryId,
+  }) async {
+    final ids = taskIds.toList(growable: false);
+    _ensureNonEmptyUniqueSelection(ids);
+    _requireDeletedCategory(deletedCategoryId);
+    _requireActiveCategory(destinationCategoryId);
+    _validateGroupedSelection(deletedCategoryId, ids);
+    for (final id in ids) {
+      _store.tasks[id] = _copyTask(
+        _store.tasks[id]!,
+        categoryId: destinationCategoryId,
+        clearDeletedAt: true,
+        clearDeletedGroupCategoryId: true,
+      );
+    }
+    return ids.length;
+  }
+
+  @override
+  Future<int> permanentlyDeleteGroupedTasks(
+    int deletedCategoryId,
+    Iterable<int> taskIds,
+  ) async {
+    final ids = taskIds.toList(growable: false);
+    _ensureNonEmptyUniqueSelection(ids);
+    _requireDeletedCategory(deletedCategoryId);
+    _validateGroupedSelection(deletedCategoryId, ids);
+    for (final id in ids) {
+      _store.tasks.remove(id);
+    }
+    return ids.length;
+  }
+
+  @override
   Future<bool> permanentlyDeleteTask(int id) async {
     final current = _store.tasks[id];
     if (current == null || current.deletedAt == null) {
@@ -302,12 +339,40 @@ class FakeTaskRepository implements TaskRepository {
     }
   }
 
+  void _ensureNonEmptyUniqueSelection(List<int> ids) {
+    if (ids.isEmpty) {
+      throw ArgumentError('At least one task must be selected.');
+    }
+    _ensureUniqueSelection(ids);
+  }
+
   TaskCategory _requireActiveCategory(int? id) {
     final category = id == null ? null : _store.categories[id];
     if (category == null || category.deletedAt != null) {
       throw StateError('An active destination category is required.');
     }
     return category;
+  }
+
+  TaskCategory _requireDeletedCategory(int id) {
+    final category = _store.categories[id];
+    if (category == null || category.deletedAt == null) {
+      throw StateError('Deleted category $id does not exist.');
+    }
+    return category;
+  }
+
+  void _validateGroupedSelection(int categoryId, List<int> ids) {
+    if (ids.any((id) {
+      final task = _store.tasks[id];
+      return task == null ||
+          task.deletedAt == null ||
+          task.deletedGroupCategoryId != categoryId;
+    })) {
+      throw StateError(
+        'Every selected task must belong to deleted category $categoryId.',
+      );
+    }
   }
 
   int _compareTasks(Task left, Task right) {

@@ -43,7 +43,7 @@ Unless a task explicitly changes this behavior, preserve:
 - Recoverable custom-category deletion from Home, with explicit move-active-tasks or grouped-Trash choices.
 - Grouped deleted categories and standalone deleted tasks in Trash.
 - Explicit selective category/task restoration and permanent deletion.
-- Transactional batch restore and permanent deletion for selected standalone tasks.
+- Transactional batch restore and permanent deletion for selected grouped or standalone tasks.
 - Android home-screen widget display and task completion interaction across all categories.
 - Shared application/widget task state.
 - Widget refresh after Flutter-side mutations.

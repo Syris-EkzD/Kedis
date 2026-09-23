@@ -94,7 +94,7 @@ class _TrashScreenState extends State<TrashScreen> {
       task.categoryId != null &&
       _activeCategories.any((category) => category.id == task.categoryId);
 
-  Future<int?> _destination() async {
+  Future<int?> _destination({String title = 'Restore task to'}) async {
     if (_activeCategories.isEmpty) return null;
     final inbox = _activeCategories.firstWhere(
       (category) => category.isSystem,
@@ -105,7 +105,7 @@ class _TrashScreenState extends State<TrashScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Restore task to'),
+          title: Text(title),
           content: DropdownButtonFormField<int>(
             key: const ValueKey('trash-restore-destination'),
             initialValue: selected,
@@ -227,6 +227,57 @@ class _TrashScreenState extends State<TrashScreen> {
     if (confirmed != true || !mounted) return;
     await _mutate(() async {
       await widget.taskRepository.permanentlyDeleteStandaloneTasks(ids);
+    });
+  }
+
+  Future<void> _restoreGroupedBatch(TaskCategory category) async {
+    final selected = _groupSelections[category.id] ?? const <int>{};
+    if (selected.isEmpty) return;
+    final destination = await _destination(title: 'Restore selected tasks to');
+    if (destination == null || !mounted) return;
+    final ids = selected.toList(growable: false);
+    await _mutate(() async {
+      await widget.taskRepository.restoreGroupedTasks(
+        category.id,
+        ids,
+        destinationCategoryId: destination,
+      );
+    });
+  }
+
+  Future<void> _deleteGroupedBatch(TaskCategory category) async {
+    final selected = _groupSelections[category.id] ?? const <int>{};
+    if (selected.isEmpty) return;
+    final count = selected.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Permanently delete $count selected task${count == 1 ? '' : 's'}?',
+        ),
+        content: const Text(
+          'Only the selected tasks will be permanently deleted. This cannot be undone. The category and unselected tasks will stay in Trash.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: ValueKey('confirm-group-batch-delete-${category.id}'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Delete $count permanently'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final ids = selected.toList(growable: false);
+    await _mutate(() async {
+      await widget.taskRepository.permanentlyDeleteGroupedTasks(
+        category.id,
+        ids,
+      );
     });
   }
 
@@ -465,19 +516,63 @@ class _TrashScreenState extends State<TrashScreen> {
             ),
           ),
           if (expanded) ...[
-            Row(
-              children: [
-                TextButton(
-                  onPressed: () => setState(
-                    () => selection.addAll(tasks.map((task) => task.id)),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: KedisSpacing.small,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Wrap(
+                    spacing: KedisSpacing.xSmall,
+                    runSpacing: KedisSpacing.xSmall,
+                    children: [
+                      TextButton(
+                        onPressed: _mutating
+                            ? null
+                            : () => setState(
+                                () => selection.addAll(
+                                  tasks.map((task) => task.id),
+                                ),
+                              ),
+                        child: const Text('Select All'),
+                      ),
+                      TextButton(
+                        onPressed: _mutating
+                            ? null
+                            : () => setState(selection.clear),
+                        child: const Text('Deselect All'),
+                      ),
+                    ],
                   ),
-                  child: const Text('Select All'),
-                ),
-                TextButton(
-                  onPressed: () => setState(selection.clear),
-                  child: const Text('Deselect All'),
-                ),
-              ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${selection.length} selected',
+                          key: ValueKey('group-selected-count-${category.id}'),
+                        ),
+                      ),
+                      IconButton(
+                        key: ValueKey('restore-group-selection-${category.id}'),
+                        tooltip: 'Restore selected grouped tasks',
+                        onPressed: _mutating || selection.isEmpty
+                            ? null
+                            : () => _restoreGroupedBatch(category),
+                        icon: const Icon(Icons.restore),
+                      ),
+                      IconButton(
+                        key: ValueKey('delete-group-selection-${category.id}'),
+                        tooltip: 'Permanently delete selected grouped tasks',
+                        onPressed: _mutating || selection.isEmpty
+                            ? null
+                            : () => _deleteGroupedBatch(category),
+                        icon: const Icon(Icons.delete_forever_outlined),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             if (tasks.isEmpty)
               const Padding(
