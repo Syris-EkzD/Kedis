@@ -29,13 +29,15 @@ Unless a task explicitly changes this behavior, preserve:
 - Task creation and display.
 - Inline task-title editing.
 - Completion and uncompletion.
-- Deletion and existing undo behavior.
+- Recoverable task deletion through Trash with immediate Undo.
+- Explicit restore and confirmed permanent deletion from Trash.
 - Active/completed ordering.
 - SQLite persistence.
 - User-created, color-coded categories.
 - Durable system Inbox.
-- Category-card home screen with compact active-task previews.
-- Home quick capture into Inbox.
+- Grid/List category-card home layouts with persisted preference.
+- Category cards with active and total non-deleted task counts plus compact active-task previews.
+- Home quick capture with Inbox preselected and optional category selection.
 - Category-specific task capture.
 - Task movement between categories.
 - Safe custom-category deletion that moves tasks to Inbox.
@@ -65,9 +67,10 @@ Implement these only through an explicit future task. Do not add their database 
 - Inbox is identified by durable system key `inbox`, never by a magic numeric ID.
 - Inbox cannot be renamed, recolored, or deleted unless product scope changes deliberately.
 - Tasks store category IDs, not category names.
-- Category deletion must move tasks to Inbox before deleting the category.
+- Category deletion must move both normal and trashed tasks to Inbox before deleting the category.
 - Category colors are stable integer ARGB values in SQLite.
-- Home previews show active tasks only and stay compact.
+- Home previews show active non-deleted tasks only and stay compact.
+- Home counts include active plus total non-deleted tasks; completed tasks count toward total, while trashed tasks do not.
 - The Android widget remains a global cross-category checklist unless a separate task changes that product decision.
 
 ---
@@ -102,9 +105,9 @@ Android is the current product target. Do not broaden an Android task into inact
 
 `KedisDatabase` owns SQLite lifecycle and schema migration. `TaskRepository` and `CategoryRepository` share the same database in the application process.
 
-Current schema version is 3. Both Flutter and native Kotlin database helpers must stay schema-compatible because either side may open the authoritative database.
+Current schema version is 4. Tasks use nullable `deleted_at` for recoverable Trash state. Both Flutter and native Kotlin database helpers must stay schema-compatible because either side may open the authoritative database.
 
-Foreign-key behavior must never silently delete tasks when a category is removed.
+Foreign-key behavior must never silently delete tasks when a category is removed. Normal task queries and Android widget reads must exclude rows with non-null `deleted_at`. Ordinary deletion must soft-delete by setting `deleted_at`; permanent row deletion is reserved for an explicit confirmed Trash action.
 
 ---
 

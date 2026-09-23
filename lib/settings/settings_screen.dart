@@ -1,3 +1,7 @@
+import 'package:kedis/repositories/task_repository.dart';
+import 'package:kedis/screens/trash_screen.dart';
+import 'package:kedis/settings/home_layout_controller.dart';
+import 'package:kedis/settings/home_layout_preference_store.dart';
 import 'package:kedis/settings/theme_controller.dart';
 import 'package:kedis/theme/kedis_design.dart';
 import 'package:flutter/material.dart';
@@ -6,9 +10,18 @@ const _itemVerticalPadding = 14.0;
 const _itemIconSize = 40.0;
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({required this.themeController, super.key});
+  const SettingsScreen({
+    required this.themeController,
+    required this.homeLayoutController,
+    required this.taskRepository,
+    required this.widgetRefresh,
+    super.key,
+  });
 
   final ThemeController themeController;
+  final HomeLayoutController homeLayoutController;
+  final TaskRepository taskRepository;
+  final Future<void> Function() widgetRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +47,34 @@ class SettingsScreen extends StatelessWidget {
                     description: 'Choose how Kedis looks',
                     value: _themeModeLabel(themeController.themeMode),
                     onTap: () => _showThemeDialog(context),
+                  ),
+                ),
+                ListenableBuilder(
+                  listenable: homeLayoutController,
+                  builder: (context, _) => SettingsItem(
+                    icon: Icons.grid_view_outlined,
+                    title: 'Home layout',
+                    description: 'Choose how category cards are arranged',
+                    value: _homeLayoutLabel(homeLayoutController.layoutMode),
+                    onTap: () => _showHomeLayoutDialog(context),
+                  ),
+                ),
+              ],
+            ),
+            SettingsSection(
+              title: 'Tasks',
+              children: [
+                SettingsItem(
+                  icon: Icons.delete_outline,
+                  title: 'Trash',
+                  description: 'Restore or permanently delete tasks',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => TrashScreen(
+                        taskRepository: taskRepository,
+                        widgetRefresh: widgetRefresh,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -71,6 +112,36 @@ class SettingsScreen extends StatelessWidget {
 
     if (selectedMode != null) {
       await themeController.setThemeMode(selectedMode);
+    }
+  }
+
+  Future<void> _showHomeLayoutDialog(BuildContext context) async {
+    final selectedMode = await showDialog<HomeLayoutMode>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Choose home layout'),
+        content: RadioGroup<HomeLayoutMode>(
+          groupValue: homeLayoutController.layoutMode,
+          onChanged: (mode) => Navigator.pop(context, mode),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: HomeLayoutMode.values
+                .map(
+                  (mode) => RadioListTile<HomeLayoutMode>(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(_homeLayoutLabel(mode)),
+                    subtitle: Text(_homeLayoutDescription(mode)),
+                    value: mode,
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      ),
+    );
+
+    if (selectedMode != null) {
+      await homeLayoutController.setLayoutMode(selectedMode);
     }
   }
 }
@@ -121,7 +192,7 @@ class SettingsItem extends StatelessWidget {
     required this.icon,
     required this.title,
     this.description,
-    required this.value,
+    this.value,
     required this.onTap,
     super.key,
   });
@@ -129,7 +200,7 @@ class SettingsItem extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? description;
-  final String value;
+  final String? value;
   final VoidCallback onTap;
 
   @override
@@ -164,12 +235,14 @@ class SettingsItem extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            value,
-            style: Theme.of(context).textTheme.bodyMedium
-                ?.copyWith(color: colorScheme.primary),
-          ),
-          const SizedBox(width: KedisSpacing.xSmall),
+          if (value != null) ...[
+            Text(
+              value!,
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: colorScheme.primary),
+            ),
+            const SizedBox(width: KedisSpacing.xSmall),
+          ],
           Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
         ],
       ),
@@ -191,5 +264,19 @@ String _themeModeLabel(ThemeMode mode) {
     ThemeMode.system => 'System',
     ThemeMode.light => 'Light',
     ThemeMode.dark => 'Dark',
+  };
+}
+
+String _homeLayoutDescription(HomeLayoutMode mode) {
+  return switch (mode) {
+    HomeLayoutMode.grid => 'Two compact category cards per row',
+    HomeLayoutMode.list => 'Full-width category cards',
+  };
+}
+
+String _homeLayoutLabel(HomeLayoutMode mode) {
+  return switch (mode) {
+    HomeLayoutMode.grid => 'Grid',
+    HomeLayoutMode.list => 'List',
   };
 }

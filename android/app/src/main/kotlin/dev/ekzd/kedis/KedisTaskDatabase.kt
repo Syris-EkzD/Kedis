@@ -17,7 +17,7 @@ object KedisTaskDatabase {
             helper.readableDatabase.query(
                 TASKS_TABLE,
                 arrayOf("id", "title", "is_completed"),
-                null,
+                "deleted_at IS NULL",
                 null,
                 null,
                 null,
@@ -53,7 +53,7 @@ object KedisTaskDatabase {
                 UPDATE $TASKS_TABLE
                 SET completed_at = CASE is_completed WHEN 0 THEN ? ELSE NULL END,
                     is_completed = CASE is_completed WHEN 0 THEN 1 ELSE 0 END
-                WHERE id = ?
+                WHERE id = ? AND deleted_at IS NULL
                 """.trimIndent(),
                 arrayOf(System.currentTimeMillis(), taskId),
             )
@@ -79,6 +79,9 @@ object KedisTaskDatabase {
             }
             if (oldVersion < 3) {
                 migrateToCategories(database)
+            }
+            if (oldVersion >= 3 && oldVersion < 4) {
+                database.execSQL("ALTER TABLE $TASKS_TABLE ADD COLUMN deleted_at INTEGER")
             }
         }
     }
@@ -130,7 +133,8 @@ object KedisTaskDatabase {
                 created_at INTEGER NOT NULL,
                 completed_at INTEGER,
                 category_id INTEGER NOT NULL
-                    REFERENCES $CATEGORIES_TABLE(id) ON DELETE RESTRICT
+                    REFERENCES $CATEGORIES_TABLE(id) ON DELETE RESTRICT,
+                deleted_at INTEGER
             )
             """.trimIndent(),
         )
@@ -173,7 +177,7 @@ object KedisTaskDatabase {
 
     // Public product identity changed, but the authoritative database filename did not.
     private const val DATABASE_NAME = "dewwit.db"
-    private const val DATABASE_VERSION = 3
+    private const val DATABASE_VERSION = 4
     private const val TASKS_TABLE = "tasks"
     private const val CATEGORIES_TABLE = "categories"
     private const val INBOX_SYSTEM_KEY = "inbox"

@@ -10,7 +10,7 @@ class KedisDatabase {
 
   // Retained for compatibility with the existing authoritative task store.
   static const databaseName = 'dewwit.db';
-  static const databaseVersion = 3;
+  static const databaseVersion = 4;
   static const tasksTable = 'tasks';
   static const categoriesTable = 'categories';
   static const inboxSystemKey = 'inbox';
@@ -69,6 +69,11 @@ class KedisDatabase {
           if (oldVersion < 3) {
             await _migrateToCategories(database);
           }
+          if (oldVersion >= 3 && oldVersion < 4) {
+            await database.execute(
+              'ALTER TABLE $tasksTable ADD COLUMN deleted_at INTEGER',
+            );
+          }
         },
       ),
     );
@@ -115,7 +120,8 @@ class KedisDatabase {
         created_at INTEGER NOT NULL,
         completed_at INTEGER,
         category_id INTEGER NOT NULL
-          REFERENCES $categoriesTable(id) ON DELETE RESTRICT
+          REFERENCES $categoriesTable(id) ON DELETE RESTRICT,
+        deleted_at INTEGER
       )
     ''');
     await database.execute('''

@@ -28,7 +28,8 @@ The following behavior is implemented today and must remain reliable as Kedis V1
 
 - Create, view, and edit tasks.
 - Complete and uncomplete tasks.
-- Delete tasks and undo supported task actions.
+- Move deleted tasks to recoverable Trash and undo supported task actions immediately.
+- Restore tasks from Trash or permanently delete them with confirmation.
 - Persist task data locally in SQLite.
 - Keep active tasks in creation order.
 - Keep completed tasks in reverse completion order, including safe handling for legacy rows without completion timestamps.
@@ -37,6 +38,7 @@ The following behavior is implemented today and must remain reliable as Kedis V1
 - Refresh the widget after application-side task mutations.
 - Reload task state when the app resumes.
 - Select System, Light, or Dark application appearance and mirror it to the widget.
+- Select Grid or List category-home layout and persist that preference.
 
 ## Custom categories
 
@@ -59,27 +61,28 @@ Kedis always has a system category named **Inbox**.
 
 Inbox exists automatically on fresh databases and after migration from pre-category schema versions. Existing tasks are migrated into Inbox without changing their IDs, titles, completion state, creation timestamps, or completion timestamps.
 
-Home-level quick capture creates a task in Inbox. Creating a task while viewing another category assigns that task directly to the current category.
+Home-level quick capture starts with Inbox selected and allows choosing any existing category before saving. Creating a task while viewing another category assigns that task directly to the current category.
 
 Inbox cannot be renamed, recolored, or deleted in Kedis V1.
 
 ## Safe category deletion
 
-Deleting a custom category never deletes its tasks. Kedis first moves every task from that category to Inbox and then removes the category. The UI confirms this behavior before deletion.
+Deleting a custom category never deletes its tasks. Kedis first moves every normal and trashed task from that category to Inbox and then removes the category. A trashed task restored after its original category was deleted therefore returns to Inbox. The UI confirms category deletion behavior before deletion.
 
 ## Category home
 
-The Kedis home screen primarily displays category cards.
+The Kedis home screen primarily displays category cards. List is the default layout when no preference is stored; Settings can switch to the compact Grid layout, and existing saved layout preferences are respected across restarts.
 
 Each card shows:
 
 - Category name.
 - Category color accent.
-- Active-task count.
+- Active non-deleted task count.
+- Total non-deleted task count.
 - Up to three active-task previews.
 - A compact `+N more` indicator when additional active tasks exist.
 
-Completed tasks do not appear in category-card previews. Tapping a card opens the full task list for that category.
+Completed tasks count toward the total but do not appear in category-card previews. Trashed tasks count toward neither active nor total values. Tapping a card opens the full normal task list for that category.
 
 ## Category task screen
 
@@ -95,11 +98,17 @@ Inside a category, the existing checklist behavior is preserved:
 
 Task moves change only category assignment; task identity, completion state, and timestamps remain unchanged.
 
+## Trash
+
+Deleting a task sets a recoverable Trash state rather than physically removing the row. Normal category views, home counts/previews, and the Android widget exclude trashed tasks. Trash is available through Settings and supports restoring individual tasks or permanently deleting them after explicit confirmation. Trash contents are retained indefinitely; Kedis does not automatically empty Trash or implement age-based Trash reminders in this batch.
+
+Immediate deletion Undo remains available and restores the same soft-deleted task row.
+
 ## Android widget
 
-The Android widget remains a global checklist surface in this category release.
+The Android widget remains a global checklist surface.
 
-It continues to show tasks across all categories and preserves the existing global task ordering and direct completion behavior. It does not show category cards, category-management controls, or category filters.
+It continues to show non-deleted tasks across all categories and preserves the existing global task ordering and direct completion behavior. It does not show category cards, category-management controls, category filters, or Trash. Direct widget completion does not mutate a task that has already been moved to Trash.
 
 ---
 

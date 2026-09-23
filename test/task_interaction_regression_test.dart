@@ -1,4 +1,6 @@
 import 'package:kedis/main.dart';
+import 'package:kedis/settings/home_layout_controller.dart';
+import 'package:kedis/settings/home_layout_preference_store.dart';
 import 'package:kedis/settings/theme_controller.dart';
 import 'package:kedis/settings/theme_preference_store.dart';
 import 'package:kedis/widgets/editing_task_item.dart';
@@ -46,6 +48,7 @@ void main() {
         taskRepository: tasks,
         categoryRepository: categories,
         themeController: ThemeController(_FakeThemePreferenceStore()),
+        homeLayoutController: HomeLayoutController(HomeLayoutPreferenceStore()),
         widgetRefresh: () async {
           widgetRefreshCount += 1;
         },
@@ -208,7 +211,7 @@ void main() {
     );
   });
 
-  testWidgets('leaves a task deleted after the Undo snackbar expires', (
+  testWidgets('leaves a task in Trash after the Undo snackbar expires', (
     WidgetTester tester,
   ) async {
     await tasks.createTask('Delete permanently');
@@ -238,6 +241,7 @@ void main() {
 
     expect(find.text('Delete permanently'), findsNothing);
     expect(await tasks.getTasks(), isEmpty);
+    expect((await tasks.getDeletedTasks()).single.title, 'Delete permanently');
     expect(widgetRefreshCount, 1);
   });
 

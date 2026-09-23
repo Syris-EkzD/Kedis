@@ -38,6 +38,7 @@ class FakeTaskRepository implements TaskRepository {
       createdAt: _now(),
       completedAt: null,
       categoryId: resolvedCategoryId,
+      deletedAt: null,
     );
     _store.tasks[task.id] = task;
     return task;
@@ -47,7 +48,8 @@ class FakeTaskRepository implements TaskRepository {
   Future<List<Task>> getTasks({int? categoryId}) async {
     final result = <Task>[];
     for (final task in _store.tasks.values) {
-      if (categoryId == null || task.categoryId == categoryId) {
+      final inCategory = categoryId == null || task.categoryId == categoryId;
+      if (task.deletedAt == null && inCategory) {
         result.add(task);
       }
     }
@@ -60,7 +62,7 @@ class FakeTaskRepository implements TaskRepository {
     final result = <Task>[];
     for (final task in _store.tasks.values) {
       final inCategory = categoryId == null || task.categoryId == categoryId;
-      if (!task.isCompleted && inCategory) {
+      if (task.deletedAt == null && !task.isCompleted && inCategory) {
         result.add(task);
       }
     }
@@ -75,6 +77,21 @@ class FakeTaskRepository implements TaskRepository {
   }
 
   @override
+  Future<List<Task>> getDeletedTasks() async {
+    final result = _store.tasks.values
+        .where((task) => task.deletedAt != null)
+        .toList();
+    result.sort((left, right) {
+      final byDeletedAt = right.deletedAt!.compareTo(left.deletedAt!);
+      if (byDeletedAt != 0) {
+        return byDeletedAt;
+      }
+      return right.id.compareTo(left.id);
+    });
+    return List.unmodifiable(result);
+  }
+
+  @override
   Future<Task?> updateTaskTitle(int id, String title) async {
     final normalizedTitle = title.trim();
     if (normalizedTitle.isEmpty) {
@@ -82,7 +99,7 @@ class FakeTaskRepository implements TaskRepository {
     }
 
     final current = _store.tasks[id];
-    if (current == null) {
+    if (current == null || current.deletedAt != null) {
       return null;
     }
 
@@ -94,7 +111,7 @@ class FakeTaskRepository implements TaskRepository {
   @override
   Future<Task?> moveTaskToCategory(int id, int categoryId) async {
     final current = _store.tasks[id];
-    if (current == null) {
+    if (current == null || current.deletedAt != null) {
       return null;
     }
     if (!_store.categories.containsKey(categoryId)) {
@@ -109,7 +126,7 @@ class FakeTaskRepository implements TaskRepository {
   @override
   Future<Task?> toggleTask(int id) async {
     final current = _store.tasks[id];
-    if (current == null) {
+    if (current == null || current.deletedAt != null) {
       return null;
     }
 
@@ -134,7 +151,7 @@ class FakeTaskRepository implements TaskRepository {
     }
 
     final current = _store.tasks[id];
-    if (current == null) {
+    if (current == null || current.deletedAt != null) {
       return null;
     }
 
@@ -150,16 +167,33 @@ class FakeTaskRepository implements TaskRepository {
 
   @override
   Future<bool> deleteTask(int id) async {
-    return _store.tasks.remove(id) != null;
+    final current = _store.tasks[id];
+    if (current == null || current.deletedAt != null) {
+      return false;
+    }
+    _store.tasks[id] = _copyTask(current, deletedAt: _now());
+    return true;
   }
 
   @override
-  Future<Task> restoreTask(Task task) async {
-    _store.tasks[task.id] = task;
-    if (task.id >= _store.nextTaskId) {
-      _store.nextTaskId = task.id + 1;
+  Future<Task?> restoreTask(int id) async {
+    final current = _store.tasks[id];
+    if (current == null || current.deletedAt == null) {
+      return null;
     }
-    return task;
+    final restored = _copyTask(current, clearDeletedAt: true);
+    _store.tasks[id] = restored;
+    return restored;
+  }
+
+  @override
+  Future<bool> permanentlyDeleteTask(int id) async {
+    final current = _store.tasks[id];
+    if (current == null || current.deletedAt == null) {
+      return false;
+    }
+    _store.tasks.remove(id);
+    return true;
   }
 
   @override
@@ -356,6 +390,8 @@ Task _copyTask(
   DateTime? completedAt,
   bool clearCompletedAt = false,
   int? categoryId,
+  DateTime? deletedAt,
+  bool clearDeletedAt = false,
 }) {
   return Task(
     id: task.id,
@@ -364,6 +400,7 @@ Task _copyTask(
     createdAt: task.createdAt,
     completedAt: clearCompletedAt ? null : completedAt ?? task.completedAt,
     categoryId: categoryId ?? task.categoryId,
+    deletedAt: clearDeletedAt ? null : deletedAt ?? task.deletedAt,
   );
 }
 

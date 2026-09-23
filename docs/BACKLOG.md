@@ -7,8 +7,10 @@ This file separates working behavior from approved Kedis V1 work and later ideas
 - [x] Create and view tasks
 - [x] Edit task titles
 - [x] Complete and uncomplete tasks
-- [x] Delete tasks
+- [x] Soft-delete tasks into recoverable Trash
 - [x] Undo supported completion and deletion actions
+- [x] Restore individual tasks from Trash
+- [x] Permanently delete individual trashed tasks with confirmation
 - [x] Preserve active/completed task ordering
 - [x] Persist tasks locally in SQLite
 - [x] Android home-screen widget
@@ -24,10 +26,14 @@ This file separates working behavior from approved Kedis V1 work and later ideas
 - [x] Durable Inbox/default category
 - [x] Migrate existing tasks into Inbox without data loss
 - [x] Create tasks within the current category
-- [x] Home quick capture into Inbox
-- [x] Category-card home screen with compact active-task previews
+- [x] Home quick capture with Inbox default and selectable destination category
+- [x] Persistent Grid/List home-layout preference with List default when no preference is stored
+- [x] Category cards with active and total non-deleted counts
+- [x] Compact active-task previews with a maximum of three entries
 - [x] Move tasks between existing categories
 - [x] Keep the Android widget global across categories
+- [x] Exclude trashed tasks from normal views, category counts/previews, and widget reads/actions
+- [x] Move trashed tasks to Inbox when deleting their custom category
 
 ## Planned Kedis V1
 

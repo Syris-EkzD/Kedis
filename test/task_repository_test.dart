@@ -27,6 +27,7 @@ void main() {
     expect(task.title, 'Buy groceries');
     expect(task.isCompleted, isFalse);
     expect(task.completedAt, isNull);
+    expect(task.deletedAt, isNull);
     expect(task.createdAt.isUtc, isTrue);
     expect(tasks, hasLength(1));
     expect(tasks.single.id, task.id);
@@ -121,12 +122,25 @@ void main() {
     expect(restored?.completedAt, originalCompletedAt);
   });
 
-  test('deletes a task', () async {
+  test('soft delete hides a task and exposes it through Trash', () async {
     final task = await repository.createTask('Finish activity');
 
     expect(await repository.deleteTask(task.id), isTrue);
     expect(await repository.deleteTask(task.id), isFalse);
     expect(await repository.getTasks(), isEmpty);
+    expect(await repository.getActiveTasks(), isEmpty);
+
+    final trashed = (await repository.getDeletedTasks()).single;
+    expect(trashed.id, task.id);
+    expect(trashed.title, task.title);
+    expect(trashed.createdAt, task.createdAt);
+    expect(trashed.categoryId, task.categoryId);
+    expect(trashed.deletedAt, isNotNull);
+
+    expect(await repository.toggleTask(task.id), isNull);
+    final stillTrashed = (await repository.getDeletedTasks()).single;
+    expect(stillTrashed.isCompleted, task.isCompleted);
+    expect(stillTrashed.completedAt, task.completedAt);
   });
 
   test('restores a deleted task with its original persisted values', () async {
@@ -139,15 +153,29 @@ void main() {
     );
 
     await repository.deleteTask(created.id);
-    final restored = await repository.restoreTask(completed!);
+    final trashed = (await repository.getDeletedTasks()).single;
+    final restored = await repository.restoreTask(created.id);
     final persisted = (await repository.getTasks()).single;
 
-    expect(restored.id, created.id);
+    expect(trashed.isCompleted, isTrue);
+    expect(trashed.completedAt, completedAt);
+    expect(restored?.id, completed?.id);
+    expect(restored?.deletedAt, isNull);
     expect(persisted.id, created.id);
     expect(persisted.title, created.title);
     expect(persisted.isCompleted, isTrue);
     expect(persisted.createdAt, created.createdAt);
     expect(persisted.completedAt, completedAt);
+  });
+
+  test('permanently deletes only a task already in Trash', () async {
+    final task = await repository.createTask('Delete forever');
+
+    expect(await repository.permanentlyDeleteTask(task.id), isFalse);
+    await repository.deleteTask(task.id);
+    expect(await repository.permanentlyDeleteTask(task.id), isTrue);
+    expect(await repository.getDeletedTasks(), isEmpty);
+    expect(await repository.restoreTask(task.id), isNull);
   });
 
   test('keeps tasks after reopening the database', () async {

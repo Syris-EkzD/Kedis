@@ -43,6 +43,7 @@ class TaskRepository {
       'created_at': createdAt.millisecondsSinceEpoch,
       'completed_at': null,
       'category_id': resolvedCategoryId,
+      'deleted_at': null,
     });
 
     return Task(
@@ -52,6 +53,7 @@ class TaskRepository {
       createdAt: createdAt,
       completedAt: null,
       categoryId: resolvedCategoryId,
+      deletedAt: null,
     );
   }
 
@@ -59,7 +61,9 @@ class TaskRepository {
     final database = await _database.database;
     final rows = await database.query(
       KedisDatabase.tasksTable,
-      where: categoryId == null ? null : 'category_id = ?',
+      where: categoryId == null
+          ? 'deleted_at IS NULL'
+          : 'deleted_at IS NULL AND category_id = ?',
       whereArgs: categoryId == null ? null : [categoryId],
       orderBy: _taskOrder,
     );
@@ -72,10 +76,20 @@ class TaskRepository {
     final rows = await database.query(
       KedisDatabase.tasksTable,
       where: categoryId == null
-          ? 'is_completed = 0'
-          : 'is_completed = 0 AND category_id = ?',
+          ? 'deleted_at IS NULL AND is_completed = 0'
+          : 'deleted_at IS NULL AND is_completed = 0 AND category_id = ?',
       whereArgs: categoryId == null ? null : [categoryId],
       orderBy: 'created_at ASC, id ASC',
+    );
+    return rows.map(Task.fromMap).toList(growable: false);
+  }
+
+  Future<List<Task>> getDeletedTasks() async {
+    final database = await _database.database;
+    final rows = await database.query(
+      KedisDatabase.tasksTable,
+      where: 'deleted_at IS NOT NULL',
+      orderBy: 'deleted_at DESC, id DESC',
     );
     return rows.map(Task.fromMap).toList(growable: false);
   }
@@ -90,7 +104,7 @@ class TaskRepository {
     final updatedRows = await database.update(
       KedisDatabase.tasksTable,
       {'title': normalizedTitle},
-      where: 'id = ?',
+      where: 'id = ? AND deleted_at IS NULL',
       whereArgs: [id],
     );
     if (updatedRows == 0) {
@@ -105,7 +119,7 @@ class TaskRepository {
     final updatedRows = await database.update(
       KedisDatabase.tasksTable,
       {'category_id': categoryId},
-      where: 'id = ?',
+      where: 'id = ? AND deleted_at IS NULL',
       whereArgs: [id],
     );
     if (updatedRows == 0) {
@@ -123,7 +137,7 @@ class TaskRepository {
         UPDATE ${KedisDatabase.tasksTable}
         SET completed_at = CASE is_completed WHEN 0 THEN ? ELSE NULL END,
             is_completed = CASE is_completed WHEN 0 THEN 1 ELSE 0 END
-        WHERE id = ?
+        WHERE id = ? AND deleted_at IS NULL
         ''',
         [DateTime.now().millisecondsSinceEpoch, id],
       );
@@ -154,7 +168,7 @@ class TaskRepository {
               ? completedAt!.millisecondsSinceEpoch
               : null,
         },
-        where: 'id = ?',
+        where: 'id = ? AND deleted_at IS NULL',
         whereArgs: [id],
       );
       if (updatedRows == 0) {
@@ -167,25 +181,38 @@ class TaskRepository {
 
   Future<bool> deleteTask(int id) async {
     final database = await _database.database;
+    final deletedAt = DateTime.now().millisecondsSinceEpoch;
+    final updatedRows = await database.update(
+      KedisDatabase.tasksTable,
+      {'deleted_at': deletedAt},
+      where: 'id = ? AND deleted_at IS NULL',
+      whereArgs: [id],
+    );
+    return updatedRows > 0;
+  }
+
+  Future<Task?> restoreTask(int id) async {
+    final database = await _database.database;
+    final updatedRows = await database.update(
+      KedisDatabase.tasksTable,
+      {'deleted_at': null},
+      where: 'id = ? AND deleted_at IS NOT NULL',
+      whereArgs: [id],
+    );
+    if (updatedRows == 0) {
+      return null;
+    }
+    return _getTask(database, id);
+  }
+
+  Future<bool> permanentlyDeleteTask(int id) async {
+    final database = await _database.database;
     final deletedRows = await database.delete(
       KedisDatabase.tasksTable,
-      where: 'id = ?',
+      where: 'id = ? AND deleted_at IS NOT NULL',
       whereArgs: [id],
     );
     return deletedRows > 0;
-  }
-
-  Future<Task> restoreTask(Task task) async {
-    final database = await _database.database;
-    await database.insert(KedisDatabase.tasksTable, {
-      'id': task.id,
-      'title': task.title,
-      'is_completed': task.isCompleted ? 1 : 0,
-      'created_at': task.createdAt.millisecondsSinceEpoch,
-      'completed_at': task.completedAt?.millisecondsSinceEpoch,
-      'category_id': task.categoryId,
-    });
-    return task;
   }
 
   Future<void> close() async {
@@ -197,7 +224,7 @@ class TaskRepository {
   Future<Task?> _getTask(DatabaseExecutor database, int id) async {
     final rows = await database.query(
       KedisDatabase.tasksTable,
-      where: 'id = ?',
+      where: 'id = ? AND deleted_at IS NULL',
       whereArgs: [id],
       limit: 1,
     );

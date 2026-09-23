@@ -10,14 +10,17 @@ The checklist foundation and Kedis V1 category system are implemented. Task ackn
 
 ### Implemented now
 
-- Create, edit, complete, uncomplete, and delete tasks
-- Undo supported completion and deletion actions
+- Create, edit, complete, and uncomplete tasks
+- Move deleted tasks to recoverable Trash with immediate Undo
+- Restore tasks from Trash or permanently delete them with confirmation
 - Preserve active/completed ordering
 - Persist tasks locally in SQLite
 - User-created, color-coded task categories
 - Built-in Inbox for zero-friction capture and migrated legacy tasks
-- Category cards with active-task counts and compact previews
+- Grid and List category-home layouts with persisted selection
+- Category cards with active and total non-deleted task counts plus compact active-task previews
 - Full task lists inside categories
+- Home quick capture with Inbox selected by default and optional category selection
 - Create tasks directly in the current category
 - Move existing tasks between categories without changing task state
 - Safely delete custom categories by moving their tasks to Inbox
@@ -43,21 +46,25 @@ Budget or transaction tracking, financial accounts or recommendations, AI/LLM fe
 - Flutter and Dart
 - Native Android widget code in Kotlin
 - SQLite through `sqflite` and Android SQLite APIs
-- `shared_preferences` for application appearance preference
+- `shared_preferences` for application appearance and home-layout preferences
 
 Development currently targets Android. Core task management is offline-first and requires no backend.
 
 ## Category behavior
 
-Inbox is a durable system category. Quick capture from the home screen creates tasks in Inbox, while capture inside a category assigns that category automatically. Inbox cannot be renamed or deleted.
+Inbox is a durable system category. Home quick capture starts with Inbox selected, but the user may choose any existing category before saving. Capture inside a category assigns that category automatically. Inbox cannot be renamed or deleted.
 
-Deleting a custom category never deletes its tasks. Kedis moves those tasks to Inbox before removing the category.
+Deleting a custom category never deletes its tasks. Kedis moves both normal and trashed tasks from that category to Inbox before removing the category.
 
-The home screen shows category cards with active-task counts and up to three active-task previews. Completed tasks remain available inside each category but do not clutter the home preview.
+The home screen defaults to the full-width List layout when no preference is stored and can be switched to the compact Grid layout from Settings. Existing saved layout preferences are respected across restarts. Category cards show active and total non-deleted task counts, up to three active-task previews, and a compact remainder indicator when needed. Completed tasks count toward the total but do not appear in previews; trashed tasks count toward neither value.
+
+## Trash behavior
+
+Deleting a task soft-deletes it into Trash and keeps the existing immediate Undo action. Trashed tasks remain stored indefinitely until explicitly restored or permanently deleted. Permanent deletion requires confirmation. Trash is available from Settings and has no automatic cleanup or retention period.
 
 ## Widget behavior
 
-The Android widget remains category-agnostic for Kedis V1. It reads the same authoritative SQLite database and continues to display tasks across all categories using the existing task ordering semantics.
+The Android widget remains category-agnostic for Kedis V1. It reads the same authoritative SQLite database and continues to display non-deleted tasks across all categories using the existing task ordering semantics. Trashed tasks are excluded from widget reads and direct widget completion actions.
 
 ## Compatibility note
 

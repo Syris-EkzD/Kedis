@@ -112,4 +112,25 @@ void main() {
     expect(remainingTasks.single.id, task.id);
     expect(remainingTasks.single.categoryId, inbox.id);
   });
+
+  test('deleting a category moves its trashed tasks to Inbox', () async {
+    final inbox = await categories.getInbox();
+    final category = await categories.createCategory('School', 0xFF6750A4);
+    final task = await tasks.createTask(
+      'Restore later',
+      categoryId: category.id,
+    );
+    await tasks.deleteTask(task.id);
+
+    final movedCount = await categories.deleteCategory(category.id);
+    final trashed = (await tasks.getDeletedTasks()).single;
+
+    expect(movedCount, 1);
+    expect(trashed.id, task.id);
+    expect(trashed.categoryId, inbox.id);
+
+    final restored = await tasks.restoreTask(task.id);
+    expect(restored?.categoryId, inbox.id);
+    expect((await tasks.getTasks(categoryId: inbox.id)).single.id, task.id);
+  });
 }

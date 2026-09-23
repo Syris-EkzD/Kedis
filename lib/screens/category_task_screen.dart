@@ -242,7 +242,7 @@ class _CategoryTaskScreenState extends State<CategoryTaskScreen>
     messenger.showSnackBar(
       SnackBar(
         persist: false,
-        content: const Text('Task deleted'),
+        content: const Text('Task moved to Trash'),
         action: SnackBarAction(
           label: 'UNDO',
           onPressed: () => unawaited(_restoreDeletedTask(task)),
@@ -253,7 +253,10 @@ class _CategoryTaskScreenState extends State<CategoryTaskScreen>
 
   Future<void> _restoreDeletedTask(Task task) async {
     await _runMutation(() async {
-      await widget.taskRepository.restoreTask(task);
+      final restored = await widget.taskRepository.restoreTask(task.id);
+      if (restored == null) {
+        throw StateError('Task ${task.id} is no longer in Trash.');
+      }
     });
   }
 
