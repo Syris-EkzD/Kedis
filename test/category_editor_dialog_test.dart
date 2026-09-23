@@ -79,6 +79,7 @@ class _CategoryEditorHarnessState extends State<_CategoryEditorHarness> {
     colorValue: categoryColorPalette[1],
     isSystem: false,
     createdAt: DateTime.utc(2026, 9, 17),
+    deletedAt: null,
   );
 
   CategoryEditorResult? _result;

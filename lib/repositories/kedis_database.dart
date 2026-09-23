@@ -10,7 +10,7 @@ class KedisDatabase {
 
   // Retained for compatibility with the existing authoritative task store.
   static const databaseName = 'dewwit.db';
-  static const databaseVersion = 4;
+  static const databaseVersion = 5;
   static const tasksTable = 'tasks';
   static const categoriesTable = 'categories';
   static const inboxSystemKey = 'inbox';
@@ -69,10 +69,13 @@ class KedisDatabase {
           if (oldVersion < 3) {
             await _migrateToCategories(database);
           }
-          if (oldVersion >= 3 && oldVersion < 4) {
+          if (oldVersion < 4) {
             await database.execute(
               'ALTER TABLE $tasksTable ADD COLUMN deleted_at INTEGER',
             );
+          }
+          if (oldVersion < 5) {
+            await _migrateToTrashFoundation(database);
           }
         },
       ),
@@ -88,10 +91,12 @@ class KedisDatabase {
         is_system INTEGER NOT NULL DEFAULT 0 CHECK(is_system IN (0, 1)),
         system_key TEXT UNIQUE,
         created_at INTEGER NOT NULL,
+        deleted_at INTEGER,
         CHECK(
           (is_system = 1 AND system_key IS NOT NULL) OR
           (is_system = 0 AND system_key IS NULL)
-        )
+        ),
+        CHECK(is_system = 0 OR deleted_at IS NULL)
       )
     ''');
     await database.execute('''
@@ -119,9 +124,60 @@ class KedisDatabase {
           CHECK(is_completed IN (0, 1)),
         created_at INTEGER NOT NULL,
         completed_at INTEGER,
-        category_id INTEGER NOT NULL
+        category_id INTEGER
           REFERENCES $categoriesTable(id) ON DELETE RESTRICT,
-        deleted_at INTEGER
+        deleted_at INTEGER,
+        deleted_group_category_id INTEGER
+          REFERENCES $categoriesTable(id) ON DELETE RESTRICT,
+        CHECK(deleted_at IS NOT NULL OR category_id IS NOT NULL)
+      )
+    ''');
+    await database.execute('''
+      CREATE INDEX tasks_category_id_idx
+      ON $tasksTable(category_id)
+    ''');
+    await database.execute('''
+      CREATE INDEX tasks_deleted_group_category_id_idx
+      ON $tasksTable(deleted_group_category_id)
+    ''');
+  }
+
+  static Future<void> _createVersion3CategoriesTable(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE $categoriesTable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+        color_value INTEGER NOT NULL,
+        is_system INTEGER NOT NULL DEFAULT 0 CHECK(is_system IN (0, 1)),
+        system_key TEXT UNIQUE,
+        created_at INTEGER NOT NULL,
+        CHECK(
+          (is_system = 1 AND system_key IS NOT NULL) OR
+          (is_system = 0 AND system_key IS NULL)
+        )
+      )
+    ''');
+    await database.execute('''
+      CREATE UNIQUE INDEX categories_name_nocase_unique
+      ON $categoriesTable(name COLLATE NOCASE)
+    ''');
+  }
+
+  static Future<void> _createVersion3TasksTable(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE $tasksTable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL CHECK(length(trim(title)) > 0),
+        is_completed INTEGER NOT NULL DEFAULT 0
+          CHECK(is_completed IN (0, 1)),
+        created_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        category_id INTEGER NOT NULL
+          REFERENCES $categoriesTable(id) ON DELETE RESTRICT
       )
     ''');
     await database.execute('''
@@ -131,11 +187,11 @@ class KedisDatabase {
   }
 
   static Future<void> _migrateToCategories(DatabaseExecutor database) async {
-    await _createCategoriesTable(database);
+    await _createVersion3CategoriesTable(database);
     final inboxId = await _insertInbox(database);
 
     await database.execute('ALTER TABLE $tasksTable RENAME TO tasks_v2');
-    await _createTasksTable(database);
+    await _createVersion3TasksTable(database);
     await database.rawInsert(
       '''
       INSERT INTO $tasksTable (
@@ -158,5 +214,39 @@ class KedisDatabase {
       [inboxId],
     );
     await database.execute('DROP TABLE tasks_v2');
+  }
+
+  static Future<void> _migrateToTrashFoundation(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute(
+      'ALTER TABLE $categoriesTable ADD COLUMN deleted_at INTEGER',
+    );
+    await database.execute('DROP INDEX IF EXISTS tasks_category_id_idx');
+    await database.execute('ALTER TABLE $tasksTable RENAME TO tasks_v4');
+    await _createTasksTable(database);
+    await database.execute('''
+      INSERT INTO $tasksTable (
+        id,
+        title,
+        is_completed,
+        created_at,
+        completed_at,
+        category_id,
+        deleted_at,
+        deleted_group_category_id
+      )
+      SELECT
+        id,
+        title,
+        is_completed,
+        created_at,
+        completed_at,
+        category_id,
+        deleted_at,
+        NULL
+      FROM tasks_v4
+    ''');
+    await database.execute('DROP TABLE tasks_v4');
   }
 }

@@ -20,6 +20,7 @@ class CategoryRepository {
     final database = await _database.database;
     final rows = await database.query(
       KedisDatabase.categoriesTable,
+      where: 'deleted_at IS NULL',
       orderBy: 'is_system DESC, created_at ASC, id ASC',
     );
     return rows.map(TaskCategory.fromMap).toList(growable: false);
@@ -29,7 +30,7 @@ class CategoryRepository {
     final database = await _database.database;
     final rows = await database.query(
       KedisDatabase.categoriesTable,
-      where: 'system_key = ?',
+      where: 'system_key = ? AND deleted_at IS NULL',
       whereArgs: [KedisDatabase.inboxSystemKey],
       limit: 1,
     );
@@ -55,6 +56,7 @@ class CategoryRepository {
       'is_system': 0,
       'system_key': null,
       'created_at': createdAt.millisecondsSinceEpoch,
+      'deleted_at': null,
     });
 
     return TaskCategory(
@@ -63,6 +65,7 @@ class CategoryRepository {
       colorValue: colorValue,
       isSystem: false,
       createdAt: createdAt,
+      deletedAt: null,
     );
   }
 
@@ -77,7 +80,7 @@ class CategoryRepository {
     await database.update(
       KedisDatabase.categoriesTable,
       {'name': normalizedName},
-      where: 'id = ?',
+      where: 'id = ? AND deleted_at IS NULL',
       whereArgs: [id],
     );
     return _getCategory(database, id);

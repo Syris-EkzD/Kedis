@@ -7,6 +7,7 @@ class Task {
     required this.completedAt,
     required this.categoryId,
     required this.deletedAt,
+    required this.deletedGroupCategoryId,
   });
 
   final int id;
@@ -14,8 +15,9 @@ class Task {
   final bool isCompleted;
   final DateTime createdAt;
   final DateTime? completedAt;
-  final int categoryId;
+  final int? categoryId;
   final DateTime? deletedAt;
+  final int? deletedGroupCategoryId;
 
   factory Task.fromMap(Map<String, Object?> map) {
     return Task(
@@ -33,7 +35,7 @@ class Task {
         ),
         _ => null,
       },
-      categoryId: map['category_id']! as int,
+      categoryId: map['category_id'] as int?,
       deletedAt: switch (map['deleted_at']) {
         final int timestamp => DateTime.fromMillisecondsSinceEpoch(
           timestamp,
@@ -41,6 +43,7 @@ class Task {
         ),
         _ => null,
       },
+      deletedGroupCategoryId: map['deleted_group_category_id'] as int?,
     );
   }
 }

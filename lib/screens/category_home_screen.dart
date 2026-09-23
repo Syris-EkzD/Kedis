@@ -473,7 +473,10 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
       builder: (context, _) {
         final tasksByCategory = <int, List<Task>>{};
         for (final task in _tasks) {
-          tasksByCategory.putIfAbsent(task.categoryId, () => []).add(task);
+          final categoryId = task.categoryId;
+          if (categoryId != null) {
+            tasksByCategory.putIfAbsent(categoryId, () => []).add(task);
+          }
         }
 
         return switch (widget.homeLayoutController.layoutMode) {
