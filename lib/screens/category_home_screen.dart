@@ -37,7 +37,7 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
     with WidgetsBindingObserver {
   static const _gridPreviewLimit = 2;
   static const _listPreviewLimit = 3;
-  static const _gridSpacing = KedisSpacing.small;
+  static const _gridSpacing = 12.0;
   static const _minimumGridCardWidth = 156.0;
   static const _gridBottomPadding = 184.0;
 
