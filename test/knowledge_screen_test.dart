@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kedis/companion/knowledge_screen.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('kedis/knowledge');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -25,9 +26,7 @@ void main() {
     expect(find.text('Search'), findsNothing);
   });
 
-  testWidgets('search and article resolve native record identity', (
-    tester,
-  ) async {
+  testWidgets('search and read preserve article identity', (tester) async {
     messenger.setMockMethodCallHandler(channel, (call) async {
       switch (call.method) {
         case 'status':
@@ -62,10 +61,7 @@ void main() {
 
   testWidgets('invalid archive reports error and permits retry', (tester) async {
     messenger.setMockMethodCallHandler(channel, (call) async {
-      throw PlatformException(
-        code: 'knowledge_error',
-        message: 'Invalid archive',
-      );
+      throw PlatformException(code: 'knowledge_error', message: 'Invalid archive');
     });
     await tester.pumpWidget(const MaterialApp(home: KnowledgeScreen()));
     await tester.pumpAndSettle();

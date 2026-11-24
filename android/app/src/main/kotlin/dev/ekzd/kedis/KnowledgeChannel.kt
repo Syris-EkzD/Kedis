@@ -38,6 +38,8 @@ internal class KnowledgeChannel(
             "status" -> submit(result) { status(context) }
             "remove" -> submit(result) {
                 val file = archiveFile(context)
+                val staging = File(file.parentFile, "incoming.zim")
+                check(!staging.exists() || staging.delete()) { "Cannot clear an incomplete import." }
                 check(!file.exists() || file.delete()) { "Cannot remove the local archive." }
                 null
             }

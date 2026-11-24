@@ -50,6 +50,11 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   }
 
   Future<void> _refresh() => _run(() async {
+    setState(() {
+      _archive = null;
+      _results = [];
+      _searched = false;
+    });
     final archive = await _channel.invokeMapMethod<Object?, Object?>('status');
     if (!mounted) return;
     setState(() => _archive = archive);
