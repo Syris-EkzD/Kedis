@@ -41,6 +41,13 @@ Kedis V1 does not require mandatory due dates.
 
 Budget or transaction tracking, financial accounts or recommendations, AI/LLM features, cloud synchronization, user accounts, Google Sign-In, Google Calendar integration, collaboration, a web application, iOS-specific functionality, recurring tasks, complex priority systems, tags, subtasks, and mandatory due dates are outside the active Kedis V1 scope.
 
+## Experimental companion direction
+
+Offline knowledge retrieval is being developed as an optional companion
+within Kedis, independently of existing V1 work. The experimental reader
+is not yet accepted or released; conversational RAG and MCP are deferred.
+See [Companion M1](docs/COMPANION.md) for the current candidate and gates.
+
 ## Tech stack
 
 - Flutter and Dart

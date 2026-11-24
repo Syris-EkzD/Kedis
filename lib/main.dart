@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:kedis/companion/knowledge_screen.dart';
 import 'package:kedis/repositories/category_repository.dart';
 import 'package:kedis/repositories/kedis_database.dart';
 import 'package:kedis/repositories/task_repository.dart';
@@ -89,6 +91,11 @@ class _KedisAppState extends State<KedisApp> {
       theme: KedisTheme.light,
       darkTheme: KedisTheme.dark,
       themeMode: widget.themeController.themeMode,
+      initialRoute: kDebugMode &&
+              const bool.fromEnvironment('KEDIS_KNOWLEDGE_PREVIEW')
+          ? '/knowledge'
+          : '/',
+      routes: {'/knowledge': (context) => const KnowledgeScreen()},
       home: CategoryHomeScreen(
         categoryRepository: widget.categoryRepository,
         taskRepository: widget.taskRepository,
