@@ -301,27 +301,81 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
   }
 
   Future<void> _deleteCategory(TaskCategory category) async {
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Delete ${category.name}?'),
-        content: const Text('Its tasks will be moved to Inbox.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (shouldDelete != true || !mounted) return;
+    final categoryTasks = _tasks
+        .where((task) => task.categoryId == category.id)
+        .toList(growable: false);
 
     try {
-      await widget.categoryRepository.deleteCategory(category.id);
+      if (categoryTasks.isEmpty) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Move ${category.name} to Trash?'),
+            content: const Text(
+              'The category will move to Trash and can be restored later.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                key: const ValueKey('confirm-empty-category-trash'),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Move to Trash'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true || !mounted) return;
+        await widget.categoryRepository.softDeleteEmptyCategory(category.id);
+      } else {
+        final choice = await showDialog<_CategoryDeleteChoice>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Move ${category.name} to Trash?'),
+            content: Text(
+              '${categoryTasks.length} task${categoryTasks.length == 1 ? '' : 's'} '
+              'can stay active in another category or move to Trash with this category.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                key: const ValueKey('delete-category-move-tasks'),
+                onPressed: () =>
+                    Navigator.of(context).pop(_CategoryDeleteChoice.moveTasks),
+                child: const Text('Move tasks elsewhere'),
+              ),
+              FilledButton(
+                key: const ValueKey('delete-category-trash-tasks'),
+                onPressed: () =>
+                    Navigator.of(context).pop(_CategoryDeleteChoice.trashTasks),
+                child: const Text('Move all to Trash'),
+              ),
+            ],
+          ),
+        );
+        if (choice == null || !mounted) return;
+
+        if (choice == _CategoryDeleteChoice.moveTasks) {
+          final destinationId = await _chooseCategoryDestination(
+            sourceCategoryId: category.id,
+            title: 'Move tasks to',
+          );
+          if (destinationId == null || !mounted) return;
+          await widget.categoryRepository.softDeleteCategoryMovingTasks(
+            category.id,
+            destinationId,
+          );
+        } else {
+          await widget.categoryRepository.softDeleteCategoryWithTasks(
+            category.id,
+          );
+        }
+      }
       await widget.widgetRefresh();
       await _loadOverview();
     } on StateError catch (error) {
@@ -331,12 +385,61 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
     }
   }
 
+  Future<int?> _chooseCategoryDestination({
+    required int sourceCategoryId,
+    required String title,
+  }) async {
+    final destinations = _categories
+        .where((category) => category.id != sourceCategoryId)
+        .toList(growable: false);
+    final inbox = destinations.firstWhere(
+      (category) => category.isSystem,
+      orElse: () => destinations.first,
+    );
+    var selectedId = inbox.id;
+    return showDialog<int>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(title),
+          content: DropdownButtonFormField<int>(
+            key: const ValueKey('category-delete-destination'),
+            initialValue: selectedId,
+            decoration: const InputDecoration(labelText: 'Destination'),
+            items: [
+              for (final category in destinations)
+                DropdownMenuItem(
+                  value: category.id,
+                  child: Text(category.name),
+                ),
+            ],
+            onChanged: (value) {
+              if (value != null) setDialogState(() => selectedId = value);
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const ValueKey('confirm-category-destination'),
+              onPressed: () => Navigator.of(dialogContext).pop(selectedId),
+              child: const Text('Move tasks'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => SettingsScreen(
           themeController: widget.themeController,
           homeLayoutController: widget.homeLayoutController,
+          categoryRepository: widget.categoryRepository,
           taskRepository: widget.taskRepository,
           widgetRefresh: widget.widgetRefresh,
         ),
@@ -574,3 +677,5 @@ class _QuickCaptureResult {
   final String title;
   final int categoryId;
 }
+
+enum _CategoryDeleteChoice { moveTasks, trashTasks }
