@@ -1,3 +1,4 @@
+import 'package:kedis/repositories/category_repository.dart';
 import 'package:kedis/repositories/task_repository.dart';
 import 'package:kedis/screens/trash_screen.dart';
 import 'package:kedis/settings/home_layout_controller.dart';
@@ -13,6 +14,7 @@ class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
     required this.themeController,
     required this.homeLayoutController,
+    required this.categoryRepository,
     required this.taskRepository,
     required this.widgetRefresh,
     super.key,
@@ -20,6 +22,7 @@ class SettingsScreen extends StatelessWidget {
 
   final ThemeController themeController;
   final HomeLayoutController homeLayoutController;
+  final CategoryRepository categoryRepository;
   final TaskRepository taskRepository;
   final Future<void> Function() widgetRefresh;
 
@@ -71,6 +74,7 @@ class SettingsScreen extends StatelessWidget {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (context) => TrashScreen(
+                        categoryRepository: categoryRepository,
                         taskRepository: taskRepository,
                         widgetRefresh: widgetRefresh,
                       ),
