@@ -85,7 +85,8 @@ class _KedisAppState extends State<KedisApp> {
 
   @override
   Widget build(BuildContext context) {
-    const preview = kDebugMode && bool.fromEnvironment('KEDIS_KNOWLEDGE_PREVIEW');
+    const preview =
+        kDebugMode && bool.fromEnvironment('KEDIS_KNOWLEDGE_PREVIEW');
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Kedis',

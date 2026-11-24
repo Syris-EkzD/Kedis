@@ -59,9 +59,14 @@ void main() {
     expect(find.text('Article path: Venus'), findsOneWidget);
   });
 
-  testWidgets('invalid archive reports error and permits retry', (tester) async {
+  testWidgets('invalid archive reports error and permits retry', (
+    tester,
+  ) async {
     messenger.setMockMethodCallHandler(channel, (call) async {
-      throw PlatformException(code: 'knowledge_error', message: 'Invalid archive');
+      throw PlatformException(
+        code: 'knowledge_error',
+        message: 'Invalid archive',
+      );
     });
     await tester.pumpWidget(const MaterialApp(home: KnowledgeScreen()));
     await tester.pumpAndSettle();
