@@ -55,7 +55,10 @@ void main() {
     await tester.pumpAndSettle();
     final result = find.byType(ListTile);
     expect(result, findsOneWidget);
-    expect(find.text('Venus'), findsNWidgets(2));
+    expect(
+      find.descendant(of: result, matching: find.text('Venus')),
+      findsNWidgets(2),
+    );
     await tester.ensureVisible(result);
     await tester.tap(result);
     await tester.pumpAndSettle();
