@@ -23,7 +23,8 @@ The checklist foundation and Kedis V1 category system are implemented. Task ackn
 - Home quick capture with Inbox selected by default and optional category selection
 - Create tasks directly in the current category
 - Move existing tasks between categories without changing task state
-- Safely delete custom categories by moving their tasks to Inbox
+- Recoverably delete custom categories with explicit move-tasks or grouped-Trash choices
+- Selectively restore or permanently delete grouped and standalone trashed tasks
 - Android home-screen widget showing tasks across all categories
 - Complete and uncomplete tasks from the widget
 - App/widget synchronization and lifecycle reload behavior
@@ -41,6 +42,14 @@ Kedis V1 does not require mandatory due dates.
 
 Budget or transaction tracking, financial accounts or recommendations, AI/LLM features, cloud synchronization, user accounts, Google Sign-In, Google Calendar integration, collaboration, a web application, iOS-specific functionality, recurring tasks, complex priority systems, tags, subtasks, and mandatory due dates are outside the active Kedis V1 scope.
 
+## Experimental companion direction
+
+The companion M1 candidate adds an optional offline knowledge reader to the
+existing application. Open the book icon on Home to import a local searchable
+ZIM, search, and read excerpts. Native retrieval and physical-device acceptance
+remain outstanding; conversational RAG and MCP are deferred. V1 commitments
+remain unchanged. See [Companion M1](docs/COMPANION.md) for limits and gates.
+
 ## Tech stack
 
 - Flutter and Dart
@@ -54,13 +63,13 @@ Development currently targets Android. Core task management is offline-first and
 
 Inbox is a durable system category. Home quick capture starts with Inbox selected, but the user may choose any existing category before saving. Capture inside a category assigns that category automatically. Inbox cannot be renamed or deleted.
 
-Deleting a custom category never deletes its tasks. Kedis moves both normal and trashed tasks from that category to Inbox before removing the category.
+Deleting a custom category moves it to recoverable Trash. Users explicitly choose whether to move its normal tasks to another active category or group them with the deleted category. Previously deleted standalone tasks remain deleted.
 
 The home screen defaults to the full-width List layout when no preference is stored and can be switched to the compact Grid layout from Settings. Existing saved layout preferences are respected across restarts. Category cards show active and total non-deleted task counts, up to three active-task previews, and a compact remainder indicator when needed. Completed tasks count toward the total but do not appear in previews; trashed tasks count toward neither value.
 
 ## Trash behavior
 
-Deleting a task soft-deletes it into Trash and keeps the existing immediate Undo action. Trashed tasks remain stored indefinitely until explicitly restored or permanently deleted. Permanent deletion requires confirmation. Trash is available from Settings and has no automatic cleanup or retention period.
+Deleting a task soft-deletes it into Trash and keeps the existing immediate Undo action. Trashed tasks remain stored indefinitely until explicitly restored or permanently deleted. Permanent deletion requires confirmation. Trash is available from Settings, separates deleted category groups from standalone tasks, and has no automatic cleanup or retention period. Category actions affect only explicitly selected grouped tasks; unselected tasks remain recoverable.
 
 ## Widget behavior
 
@@ -75,6 +84,8 @@ The public product is Kedis, but these internal compatibility identifiers intent
 - Native widget theme preferences: `dewwit_widget_preferences`
 
 ## Run
+
+Use Flutter 3.47.5, matching the pinned quality gate, and Java 17.
 
 ```bash
 flutter pub get

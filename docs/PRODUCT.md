@@ -140,6 +140,21 @@ Kedis should eventually send restrained local notifications for stale tasks that
 
 ---
 
+# Optional companion direction
+
+Kedis remains task-first. M1 is an experimental offline knowledge reader
+within the same application, accessible from Home through the book icon.
+A user may import a searchable local ZIM, search article text, read excerpts,
+and remove Kedis's copy without modifying the original. No archive is needed
+for task management. Native retrieval and physical-device acceptance are
+pending; this is not yet an accepted feature.
+
+V1 acknowledgement, stale-task detection and reminders remain committed work.
+On-device conversational RAG and permission-scoped MCP are future milestones,
+not M1 requirements. See [COMPANION.md](COMPANION.md).
+
+---
+
 # Kedis V1 non-goals
 
 The following remain outside active Kedis V1 scope:

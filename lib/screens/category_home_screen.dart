@@ -1,3 +1,4 @@
+import 'package:kedis/companion/knowledge_screen.dart';
 import 'package:kedis/models/task.dart';
 import 'package:kedis/models/task_category.dart';
 import 'package:kedis/repositories/category_repository.dart';
@@ -503,6 +504,15 @@ class _CategoryHomeScreenState extends State<CategoryHomeScreen>
           ],
         ),
         actions: [
+          IconButton(
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (context) => const KnowledgeScreen(),
+              ),
+            ),
+            tooltip: 'Offline knowledge',
+            icon: const Icon(Icons.menu_book_outlined),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: KedisSpacing.small),
             child: IconButton(

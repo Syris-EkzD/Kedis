@@ -43,6 +43,10 @@ kotlin {
     }
 }
 
+dependencies {
+    implementation("org.kiwix:libkiwix:2.6.0")
+}
+
 flutter {
     source = "../.."
 }
