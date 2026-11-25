@@ -53,7 +53,11 @@ void main() {
     await tester.enterText(find.byType(TextField), 'Venus');
     await tester.tap(find.text('Search'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ListTile, 'Venus'));
+    final result = find.byType(ListTile);
+    expect(result, findsOneWidget);
+    expect(find.text('Venus'), findsNWidgets(2));
+    await tester.ensureVisible(result);
+    await tester.tap(result);
     await tester.pumpAndSettle();
     expect(find.text('Plain text excerpt'), findsOneWidget);
     expect(find.text('Article path: Venus'), findsOneWidget);
