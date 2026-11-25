@@ -2,8 +2,9 @@
 
 Owner-approved direction: one existing Kedis application, offline-first task management and
 optional knowledge retrieval, then on-device RAG and future permission-scoped MCP.
-V1 task acknowledgement, stale tasks, reminders and the existing Trash milestone remain
-separate commitments. This draft is not an accepted production feature.
+V1 task acknowledgement, stale tasks and reminders remain separate commitments.
+Recoverable category and grouped Trash behavior is inherited from merged PR #12.
+This draft is not an accepted production feature.
 
 ## Candidate and limits
 
@@ -12,7 +13,7 @@ separate commitments. This draft is not an accepted production feature.
   builds arm, arm64, x86 and x86_64. Actual resolved APK ABI and runtime
   behavior require validation.
 - Use the Android document picker and copy one single-file, indexed ZIM into
-  no-backup private storage. The 2 GiB preview cap and 128 MiB free-space
+  no-backup private storage. The 2 GiB import cap and 128 MiB free-space
   reserve are deliberate provisional limits. Replacement is staged, checked
   and atomically renamed; original external documents are never modified.
 - Full-text search uses libzim, not a second database. Up to 20 results and
@@ -31,35 +32,42 @@ separate commitments. This draft is not an accepted production feature.
 - No model, accounts, network service, vector index, background downloads,
   or task mutations. Native libraries are loaded only on knowledge use.
 
-## Concurrent integration order
+## Integration and navigation
 
-PR #12 owns Home, Settings, Trash and the existing product/architecture/backlog
-documents. This draft deliberately does not edit those files. The independent
-screen has a named route and a debug-only startup preview. Integrate PR #12
-first (separate authorization), update this branch from main, add a small
-Home or Settings entry and reconcile documentation. Do not merge this draft
-before that and full physical acceptance.
+PR #12 and the Flutter 3.47.5 pin from PR #14 are integrated into this
+branch without rewriting history. Home remains task-first and exposes an
+Offline knowledge book icon. Back returns to the existing Home route.
+The debug startup flag and named preview route have been removed.
+Do not merge before independent review and genuine physical acceptance.
 
 ## Private physical test
 
-On Ubuntu with Flutter and Java 17, provision a small genuine searchable
-Wikipedia ZIM from https://library.kiwix.org/ and copy it to the phone's Downloads.
-Build/install directly for private testing only:
+Use Flutter 3.47.5 and Java 17 on Ubuntu. A candidate genuine archive is
+Simple English Wikipedia Mini, September 2026 (about 506 MiB):
+https://lb.download.kiwix.org/zim/wikipedia/wikipedia_en-simple_all_mini_2026-09.zim
+Verify the actual checksum and full-text index on the downloaded file before
+using it as a test fixture; the listing alone does not establish index support.
+If not indexed, select a searchable archive under 2 GiB from
+https://library.kiwix.org/ (e.g. Simple English Wikipedia Nopic).
+Copy the file to the phone's Downloads.
 
+    flutter --version
     flutter pub get
     dart format --output=none --set-exit-if-changed lib test
     flutter analyze
     flutter test
     flutter build apk --debug
     git diff --check
-    flutter run --debug --dart-define=KEDIS_KNOWLEDGE_PREVIEW=true
+    flutter run --debug
 
-The preview starts on the reader; Back returns to the normal task home.
-Normal launches without the define remain unchanged. Verify import, cancel,
-invalid file, empty search, real results, article identity, airplane mode,
-restart with archive, failed replacement retaining old archive, removal
-without deleting the original, and normal task/widget behavior. Inspect APK
-ABIs and native libraries locally; measure memory and import/search latency.
+Open the Home book icon. Verify import, cancel, invalid file, empty search,
+real results, article identity, airplane mode, restart with archive, failed
+replacement retaining old archive, removal without deleting the original,
+and normal task/widget behavior. Record actual archive UUID/edition, SHA256,
+index/checksum status, tested commit, device/OS, APK ABIs/native libraries,
+memory and import/search latency. Use disposable task data and preserve
+existing user data; do not clear or uninstall without explicit approval.
+No APK distribution is authorized.
 
 ## Licensing
 

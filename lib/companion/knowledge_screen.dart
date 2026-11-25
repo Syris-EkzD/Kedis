@@ -145,7 +145,11 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             if (archive == null)
-              const Text('No archive installed. Import a searchable ZIM file.')
+              Text(
+                _error == null
+                    ? 'No archive installed. Import a searchable ZIM file.'
+                    : 'No readable archive available. Import or check again.',
+              )
             else ...[
               Text(
                 '${archive['title']}',
@@ -243,7 +247,7 @@ class _ArticleScreen extends StatelessWidget {
             ),
             const Divider(),
             if (article['truncated'] == true)
-              const Text('Excerpt truncated for this preview.'),
+              const Text('Excerpt truncated for this reader.'),
             SelectableText('${article['text']}'),
           ],
         ),

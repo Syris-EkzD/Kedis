@@ -49,6 +49,15 @@ These items are active product direction but are not implemented yet.
 
 Kedis V1 stale-task reminders do not require mandatory due dates.
 
+## Optional companion (separate approved milestone)
+
+- [ ] M1 offline knowledge: candidate source in PR #13; native retrieval,
+  device acceptance and independent review pending.
+- [ ] Future on-device conversational RAG after M1 acceptance.
+- [ ] Future permission-scoped MCP, subject to separate approval.
+
+No companion feature changes V1 acknowledgement, stale-task or reminder scope.
+
 ## Outside Kedis V1
 
 Potential future work may be reconsidered after real use creates a concrete need. It is not active Kedis V1 implementation scope.

@@ -8,6 +8,7 @@ import 'package:kedis/widgets/category_card.dart';
 import 'package:kedis/widgets/editable_task_item.dart';
 import 'package:kedis/widgets/editing_task_item.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -124,6 +125,38 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('Knowledge navigation preserves task state', (tester) async {
+    const channel = MethodChannel('kedis/knowledge');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final calls = <String>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call.method);
+      return null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    final inbox = await categories.getInbox();
+    final task = await tasks.createTask('Keep this task', categoryId: inbox.id);
+    await pumpKedis(tester);
+    expect(calls, isEmpty);
+    expect(find.text('Keep this task'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Offline knowledge'));
+    await tester.pumpAndSettle();
+    expect(find.text('Offline knowledge'), findsOneWidget);
+    expect(find.textContaining('No archive installed'), findsOneWidget);
+    expect(calls, ['status']);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Keep this task'), findsOneWidget);
+    expect((await tasks.getTasks()).single.id, task.id);
+    expect((await tasks.getTasks()).single.isCompleted, isFalse);
+    expect(widgetRefreshCount, 0);
+    expect(find.byTooltip('Settings'), findsOneWidget);
+  });
 
   testWidgets('Home creation FAB expands and collapses create actions', (
     WidgetTester tester,

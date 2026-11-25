@@ -238,6 +238,22 @@ The widget broadcast action remains `dev.ekzd.kedis.TOGGLE_TASK`.
 
 ---
 
+# Experimental companion boundary (M1 candidate)
+
+Home opens an independent Flutter knowledge screen through a normal
+Material route. The `kedis/knowledge` platform channel delegates to
+`KnowledgeChannel` in Kotlin, with archive work serialized on a background
+worker. The pinned Kiwix binding performs full-text search and article
+extraction from a single local ZIM copied into app-private no-backup storage.
+Plain-text excerpts and archive UUID/record paths cross the channel.
+Native loading is on demand. No knowledge operation uses or migrates
+`dewwit.db`, modifies tasks, or depends on the widget channel.
+
+This is the implemented source boundary, not verified native runtime behavior.
+See [COMPANION.md](COMPANION.md) for limits, licensing and physical acceptance.
+
+---
+
 # Planned Kedis V1 architecture work
 
 Acknowledgement, stale-task derivation, and restrained local reminders remain future implementation tasks. That work should define activity timestamps, staleness calculation, notification scheduling/throttling, and cancellation based on concrete product requirements.

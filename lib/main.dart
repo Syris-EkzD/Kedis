@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-import 'package:kedis/companion/knowledge_screen.dart';
 import 'package:kedis/repositories/category_repository.dart';
 import 'package:kedis/repositories/kedis_database.dart';
 import 'package:kedis/repositories/task_repository.dart';
@@ -85,16 +83,12 @@ class _KedisAppState extends State<KedisApp> {
 
   @override
   Widget build(BuildContext context) {
-    const preview =
-        kDebugMode && bool.fromEnvironment('KEDIS_KNOWLEDGE_PREVIEW');
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Kedis',
       theme: KedisTheme.light,
       darkTheme: KedisTheme.dark,
       themeMode: widget.themeController.themeMode,
-      initialRoute: preview ? '/knowledge' : '/',
-      routes: {'/knowledge': (context) => const KnowledgeScreen()},
       home: CategoryHomeScreen(
         categoryRepository: widget.categoryRepository,
         taskRepository: widget.taskRepository,

@@ -59,6 +59,61 @@ void main() {
     expect(find.text('Article path: Venus'), findsOneWidget);
   });
 
+  testWidgets('cancelled import preserves archive', (tester) async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'status') return archive;
+      expect(call.method, 'importArchive');
+      return null;
+    });
+    await tester.pumpWidget(const MaterialApp(home: KnowledgeScreen()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import ZIM'));
+    await tester.pumpAndSettle();
+    expect(find.text('Test archive'), findsOneWidget);
+    expect(find.text('Search'), findsOneWidget);
+  });
+
+  testWidgets('failed replacement preserves archive', (tester) async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'status') return archive;
+      expect(call.method, 'importArchive');
+      throw PlatformException(code: 'invalid', message: 'Invalid replacement');
+    });
+    await tester.pumpWidget(const MaterialApp(home: KnowledgeScreen()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import ZIM'));
+    await tester.pumpAndSettle();
+    expect(find.text('Invalid replacement'), findsOneWidget);
+    expect(find.text('Test archive'), findsOneWidget);
+    expect(find.text('Search'), findsOneWidget);
+  });
+
+  testWidgets('removal requires confirmation', (tester) async {
+    var removals = 0;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'status') return archive;
+      expect(call.method, 'remove');
+      removals++;
+      return null;
+    });
+    await tester.pumpWidget(const MaterialApp(home: KnowledgeScreen()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove archive'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(removals, 0);
+    expect(find.text('Test archive'), findsOneWidget);
+
+    await tester.tap(find.text('Remove archive'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+    expect(removals, 1);
+    expect(find.textContaining('No archive installed'), findsOneWidget);
+    expect(find.text('Search'), findsNothing);
+  });
+
   testWidgets('invalid archive reports error and permits retry', (
     tester,
   ) async {
@@ -71,6 +126,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: KnowledgeScreen()));
     await tester.pumpAndSettle();
     expect(find.text('Invalid archive'), findsOneWidget);
+    expect(find.textContaining('No readable archive'), findsOneWidget);
     expect(find.text('Import ZIM'), findsOneWidget);
     expect(find.text('Remove archive'), findsOneWidget);
   });
