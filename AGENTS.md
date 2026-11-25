@@ -40,9 +40,10 @@ Unless a task explicitly changes this behavior, preserve:
 - Home quick capture with Inbox preselected and optional category selection.
 - Category-specific task capture.
 - Task movement between categories.
-- Current Home category deletion through a temporary compatibility flow that moves tasks to Inbox.
-- Repository support for recoverable category deletion and grouped deleted tasks.
-- Repository support for selective category/task restoration and permanent deletion.
+- Recoverable custom-category deletion from Home, with explicit move-active-tasks or grouped-Trash choices.
+- Grouped deleted categories and standalone deleted tasks in Trash.
+- Explicit selective category/task restoration and permanent deletion.
+- Transactional batch restore and permanent deletion for selected grouped or standalone tasks.
 - Android home-screen widget display and task completion interaction across all categories.
 - Shared application/widget task state.
 - Widget refresh after Flutter-side mutations.
@@ -69,17 +70,16 @@ Implement these only through an explicit future task. Do not add their database 
 - Inbox is identified by durable system key `inbox`, never by a magic numeric ID.
 - Inbox cannot be renamed, recolored, or deleted unless product scope changes deliberately.
 - Tasks store category IDs, not category names.
-- The current Home compatibility deletion flow moves both normal and trashed tasks to Inbox before deleting the category.
+- Deleting an empty custom category moves it to Trash.
+- Deleting a nonempty custom category explicitly either moves its active tasks to a chosen active category or groups them with the deleted category in Trash.
 - Category colors are stable integer ARGB values in SQLite.
 - Home previews show active non-deleted tasks only and stay compact.
 - Home counts include active plus total non-deleted tasks; completed tasks count toward total, while trashed tasks do not.
 - The Android widget remains a global cross-category checklist unless a separate task changes that product decision.
 
-## Trash repository and UI status
+## Trash selection rules
 
-The data layer implements recoverable custom-category deletion, deleted category groups, selective restoration, and selective permanent deletion. These repository capabilities do not mean the replacement Trash interface is implemented.
-
-The current Home category-deletion dialog still uses the temporary compatibility method that moves tasks to Inbox and physically deletes the custom category. A future explicit UI milestone will replace that flow with the approved recoverable-category operations and grouped Trash presentation.
+Home and Trash use the recoverable-category repository operations. The obsolete physical-deletion compatibility method has no user-facing route.
 
 Selecting a deleted category does not automatically select its grouped tasks. Only explicitly selected grouped tasks may be restored or permanently deleted. When a deleted category is restored or permanently deleted, unselected grouped tasks must remain deleted and become categoryless standalone Trash entries.
 

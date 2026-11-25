@@ -174,17 +174,17 @@ Inbox is ordered first. User categories follow creation order with ID as a deter
 
 All multi-row category operations run in SQLite transactions. Deleted category names remain reserved until permanent deletion. Inbox itself cannot be renamed, recolored, or deleted.
 
-The existing UI-facing category deletion method remains temporarily available: it moves normal and trashed tasks to Inbox before physically deleting the custom category. Current screens continue using that compatibility path until the replacement dialogs are implemented.
+The former UI-facing physical deletion method remains only as a deprecated compatibility API and has no user-facing route. Home uses the transactional recoverable-category operations.
 
 `TaskRepository` handles task assignment by persistent category ID. Creating a task without a category resolves the current Inbox through its durable system key. Explicit category destinations for creation, movement, and restoration must exist and be active.
 
 Ordinary task reads and mutations exclude rows with non-null `deleted_at`. The repository exposes separate queries for grouped deleted tasks and standalone deleted tasks while retaining the existing broad Trash query for UI compatibility. Individual restoration preserves a retained active category; categoryless or grouped tasks require an explicit active destination. Permanent task deletion removes only the selected deleted row.
 
-## Trash repository readiness
+## Trash integration
 
-The data layer is ready for selective category-group restore and permanent deletion. Selecting a category does not imply selection of its grouped tasks: unselected grouped tasks remain deleted, become categoryless, and move to the standalone deleted-task collection.
+The grouped Trash interface exposes deleted category groups separately from standalone deleted tasks. Selecting a category does not imply selection of its grouped tasks: selections start empty, and unselected grouped tasks remain deleted, become categoryless, and move to the standalone deleted-task collection when their category is restored or permanently deleted.
 
-The grouped Trash interface and replacement category-deletion dialogs are not implemented yet. Existing screens continue using their current user-facing deletion and Trash flows until the subsequent UI milestone connects these repository operations.
+Individual grouped or categoryless task restoration requires an explicit active destination. Expanded deleted-category groups support scoped selection and transactional restore-to-destination or permanent deletion for only those selected tasks, without changing the category. Selected standalone tasks can likewise be restored or permanently deleted in validated transactions. UI mutations reload Trash and request an Android widget refresh.
 
 ---
 
@@ -205,7 +205,7 @@ Tapping a category opens `CategoryTaskScreen`, which preserves the existing chec
 
 Task moving uses a simple destination dialog and does not change task timestamps or completion state.
 
-Settings also links to a dedicated Trash screen for restore and confirmed permanent deletion. Immediate task-delete Undo restores the same soft-deleted row rather than reinserting a stale task object.
+Settings links to the grouped Trash screen for category and task restoration, scoped selection, and confirmed permanent deletion. Immediate task-delete Undo restores the same soft-deleted row rather than reinserting a stale task object.
 
 No external state-management or navigation framework is used.
 
